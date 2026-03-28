@@ -1,0 +1,93 @@
+{
+  "appId": "com.ciphernode.app",
+  "productName": "CipherNode",
+  "copyright": "Copyright © 2025 CipherNode",
+
+  "extraMetadata": {
+    "main": "electron/dist/main.js"
+  },
+
+  "directories": {
+    "output": "dist-electron",
+    "buildResources": "assets"
+  },
+
+  "files": [
+    "electron/dist/**",
+    "dist/**",
+    "assets/**",
+    "!node_modules/**",
+    "!electron/src/**",
+    "!**/*.ts",
+    "!**/*.map",
+    "!client/**",
+    "!server/**",
+    "!server_dist/**",
+    "!tor-bin/**"
+  ],
+
+  "asar": true,
+  "asarUnpack": [
+    "**/*.node"
+  ],
+
+  "win": {
+    "target": [
+      { "target": "nsis",     "arch": ["x64"] },
+      { "target": "portable", "arch": ["x64"] }
+    ],
+    "icon": "assets/images/icon.png",
+    "extraResources": [
+      {
+        "from": "tor-bin/windows",
+        "to": "tor-bin",
+        "filter": ["**/*"]
+      }
+    ]
+  },
+
+  "mac": {
+    "target": [
+      { "target": "dmg", "arch": ["x64", "arm64"] },
+      { "target": "zip", "arch": ["x64", "arm64"] }
+    ],
+    "icon": "assets/images/icon.png",
+    "hardenedRuntime": true,
+    "gatekeeperAssess": false,
+    "entitlements": "electron/entitlements.mac.plist",
+    "entitlementsInherit": "electron/entitlements.mac.plist",
+    "extraResources": [
+      {
+        "from": "tor-bin/macos-${arch}",
+        "to": "tor-bin",
+        "filter": ["**/*"]
+      }
+    ]
+  },
+
+  "linux": {
+    "target": [
+      { "target": "AppImage", "arch": ["x64", "arm64"] },
+      { "target": "deb",      "arch": ["x64", "arm64"] },
+      { "target": "rpm",      "arch": ["x64"] }
+    ],
+    "icon": "assets/images/icon.png",
+    "category": "Network",
+    "extraResources": [
+      {
+        "from": "tor-bin/linux-${arch}",
+        "to": "tor-bin",
+        "filter": ["**/*"]
+      }
+    ]
+  },
+
+  "nsis": {
+    "oneClick": false,
+    "allowToChangeInstallationDirectory": true,
+    "createDesktopShortcut": true,
+    "createStartMenuShortcut": true
+  },
+
+  "publish": null
+}

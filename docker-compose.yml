@@ -1,0 +1,46 @@
+version: '3.8'
+
+services:
+  ciphernode-relay:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ciphernode-relay
+    restart: unless-stopped
+    ports:
+      - "5000:5000"
+    environment:
+      - NODE_ENV=production
+      - PORT=5000
+      - MESSAGE_TTL_MS=300000
+      - CLEANUP_INTERVAL_MS=60000
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:5000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp:size=100M,mode=1777
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 128M
+    networks:
+      - ciphernode-network
+
+networks:
+  ciphernode-network:
+    driver: bridge

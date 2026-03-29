@@ -47,6 +47,7 @@
         }
       ],
       "expo-web-browser",
+      "./plugins/withDisableLint",
       [
         "expo-build-properties",
         {

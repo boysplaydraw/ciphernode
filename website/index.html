@@ -1,0 +1,1092 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CipherNode — Şifreli, Anonim Mesajlaşma</title>
+  <meta name="description" content="Uçtan uca şifreli, Tor destekli, sunucu gerektirmeyen anonim mesajlaşma uygulaması. OpenPGP RSA-4096, P2P, dosya paylaşımı." />
+  <meta property="og:title" content="CipherNode" />
+  <meta property="og:description" content="Sansürsüz. İzlenemez. Özgür." />
+  <meta property="og:type" content="website" />
+  <style>
+    /* ── Temel ── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:       #0A0E14;
+      --bg2:      #151B26;
+      --bg3:      #1E2433;
+      --bg4:      #2E3440;
+      --cyan:     #00F5FF;
+      --purple:   #B877FF;
+      --green:    #00FF88;
+      --warn:     #FFB800;
+      --red:      #FF4757;
+      --text:     #E5E9F0;
+      --text2:    #8892A6;
+      --text3:    #434C5E;
+      --border:   #2E3440;
+      --font:     'Inter', 'Segoe UI', system-ui, sans-serif;
+      --mono:     'JetBrains Mono', 'Fira Code', 'Courier New', monospace;
+    }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--font);
+      line-height: 1.6;
+      overflow-x: hidden;
+    }
+
+    /* ── Tipografi ── */
+    h1, h2, h3, h4 { line-height: 1.2; font-weight: 700; }
+    a { color: var(--cyan); text-decoration: none; }
+    a:hover { opacity: .8; }
+    code, pre, .mono { font-family: var(--mono); }
+
+    /* ── Layout ── */
+    .container { max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+    section { padding: 96px 0; }
+    section + section { border-top: 1px solid var(--border); }
+
+    /* ── Nav ── */
+    nav {
+      position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+      background: rgba(10,14,20,.92);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border);
+      height: 60px;
+      display: flex; align-items: center;
+    }
+    .nav-inner {
+      width: 100%; max-width: 1100px; margin: 0 auto; padding: 0 24px;
+      display: flex; justify-content: space-between; align-items: center;
+    }
+    .nav-logo {
+      font-family: var(--mono);
+      font-size: 18px;
+      font-weight: 700;
+      color: var(--cyan);
+      letter-spacing: 1px;
+    }
+    .nav-logo span { color: var(--purple); }
+    .nav-links {
+      display: flex; gap: 32px; list-style: none;
+    }
+    .nav-links a { color: var(--text2); font-size: 14px; transition: color .2s; }
+    .nav-links a:hover { color: var(--cyan); }
+    .nav-cta {
+      background: var(--cyan);
+      color: var(--bg) !important;
+      font-weight: 600;
+      padding: 8px 20px;
+      border-radius: 8px;
+      font-size: 14px !important;
+    }
+    .nav-cta:hover { opacity: .9 !important; }
+
+    /* ── Hero ── */
+    .hero {
+      padding: 160px 0 96px;
+      text-align: center;
+      position: relative;
+      overflow: hidden;
+    }
+    .hero::before {
+      content: '';
+      position: absolute;
+      top: -200px; left: 50%; transform: translateX(-50%);
+      width: 800px; height: 800px;
+      background: radial-gradient(ellipse, rgba(0,245,255,.06) 0%, transparent 70%);
+      pointer-events: none;
+    }
+    .hero::after {
+      content: '';
+      position: absolute;
+      top: 100px; right: -100px;
+      width: 400px; height: 400px;
+      background: radial-gradient(ellipse, rgba(184,119,255,.05) 0%, transparent 70%);
+      pointer-events: none;
+    }
+    .hero-badge {
+      display: inline-flex; align-items: center; gap: 8px;
+      background: rgba(0,245,255,.08);
+      border: 1px solid rgba(0,245,255,.2);
+      border-radius: 100px;
+      padding: 6px 16px;
+      font-size: 12px;
+      color: var(--cyan);
+      font-family: var(--mono);
+      letter-spacing: 1px;
+      margin-bottom: 32px;
+    }
+    .hero-badge::before {
+      content: '';
+      width: 8px; height: 8px;
+      background: var(--green);
+      border-radius: 50%;
+      animation: pulse 2s infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: .6; transform: scale(.8); }
+    }
+    .hero h1 {
+      font-size: clamp(36px, 6vw, 72px);
+      background: linear-gradient(135deg, var(--text) 0%, var(--cyan) 50%, var(--purple) 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      margin-bottom: 24px;
+    }
+    .hero-sub {
+      font-size: 20px;
+      color: var(--text2);
+      max-width: 600px;
+      margin: 0 auto 48px;
+    }
+    .hero-buttons {
+      display: flex; gap: 16px; justify-content: center; flex-wrap: wrap;
+    }
+    .btn {
+      display: inline-flex; align-items: center; gap: 10px;
+      padding: 14px 28px;
+      border-radius: 12px;
+      font-weight: 600;
+      font-size: 15px;
+      transition: all .2s;
+      cursor: pointer;
+      border: none;
+    }
+    .btn-primary {
+      background: var(--cyan);
+      color: var(--bg);
+    }
+    .btn-primary:hover { background: #00dce6; transform: translateY(-2px); box-shadow: 0 8px 24px rgba(0,245,255,.25); color: var(--bg); }
+    .btn-secondary {
+      background: rgba(255,255,255,.05);
+      color: var(--text);
+      border: 1px solid var(--border);
+    }
+    .btn-secondary:hover { background: rgba(255,255,255,.1); transform: translateY(-2px); color: var(--text); }
+    .btn-web {
+      background: rgba(184,119,255,.12);
+      color: var(--purple);
+      border: 1px solid rgba(184,119,255,.3);
+    }
+    .btn-web:hover { background: rgba(184,119,255,.2); transform: translateY(-2px); color: var(--purple); }
+
+    /* ── Stats bar ── */
+    .stats-bar {
+      padding: 32px 0;
+      border-top: 1px solid var(--border);
+      border-bottom: 1px solid var(--border);
+    }
+    .stats-inner {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+      gap: 24px;
+      text-align: center;
+    }
+    .stat-value {
+      font-family: var(--mono);
+      font-size: 28px;
+      font-weight: 700;
+      color: var(--cyan);
+    }
+    .stat-label { font-size: 13px; color: var(--text2); margin-top: 4px; }
+
+    /* ── Features ── */
+    .section-label {
+      font-family: var(--mono);
+      font-size: 11px;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: var(--cyan);
+      margin-bottom: 12px;
+    }
+    .section-title { font-size: clamp(28px, 4vw, 42px); margin-bottom: 16px; }
+    .section-desc { font-size: 17px; color: var(--text2); max-width: 560px; }
+
+    .features-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 24px;
+      margin-top: 64px;
+    }
+    .feature-card {
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 32px;
+      transition: all .2s;
+    }
+    .feature-card:hover { border-color: var(--cyan); transform: translateY(-4px); box-shadow: 0 12px 32px rgba(0,0,0,.3); }
+    .feature-icon {
+      width: 48px; height: 48px;
+      background: rgba(0,245,255,.1);
+      border-radius: 12px;
+      display: flex; align-items: center; justify-content: center;
+      margin-bottom: 20px;
+      font-size: 22px;
+    }
+    .feature-icon.purple { background: rgba(184,119,255,.1); }
+    .feature-icon.green  { background: rgba(0,255,136,.1); }
+    .feature-title { font-size: 18px; font-weight: 600; margin-bottom: 8px; }
+    .feature-desc { font-size: 14px; color: var(--text2); line-height: 1.7; }
+
+    /* ── Downloads ── */
+    .downloads-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 16px;
+      margin-top: 48px;
+    }
+    .download-card {
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 28px 24px;
+      text-align: center;
+      transition: all .2s;
+      text-decoration: none;
+      display: block;
+    }
+    .download-card:hover { border-color: var(--cyan); transform: translateY(-4px); box-shadow: 0 8px 24px rgba(0,0,0,.3); }
+    .download-icon { font-size: 36px; margin-bottom: 12px; }
+    .download-name { font-size: 16px; font-weight: 600; color: var(--text); margin-bottom: 4px; }
+    .download-desc { font-size: 12px; color: var(--text2); }
+    .download-badge {
+      display: inline-block;
+      font-size: 10px;
+      font-family: var(--mono);
+      background: rgba(0,245,255,.1);
+      color: var(--cyan);
+      border-radius: 4px;
+      padding: 2px 8px;
+      margin-top: 8px;
+    }
+    .download-badge.soon { background: rgba(255,184,0,.1); color: var(--warn); }
+
+    .web-app-banner {
+      background: linear-gradient(135deg, rgba(0,245,255,.06), rgba(184,119,255,.06));
+      border: 1px solid rgba(0,245,255,.2);
+      border-radius: 20px;
+      padding: 48px;
+      margin-top: 48px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 32px;
+      flex-wrap: wrap;
+    }
+    .web-app-banner h3 { font-size: 24px; margin-bottom: 8px; }
+    .web-app-banner p { color: var(--text2); max-width: 480px; }
+
+    /* ── Self-host ── */
+    .selfhost-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+      gap: 24px;
+      margin-top: 48px;
+    }
+    .selfhost-card {
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      overflow: hidden;
+    }
+    .selfhost-header {
+      padding: 20px 24px 16px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      border-bottom: 1px solid var(--border);
+    }
+    .selfhost-platform {
+      font-size: 15px;
+      font-weight: 600;
+    }
+    .selfhost-body { padding: 20px 24px; }
+    .code-block {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 16px;
+      font-family: var(--mono);
+      font-size: 13px;
+      color: var(--text2);
+      margin-bottom: 12px;
+      overflow-x: auto;
+    }
+    .code-block .cmd { color: var(--cyan); }
+    .code-block .comment { color: var(--text3); }
+    .code-block .string { color: var(--green); }
+    .selfhost-note { font-size: 13px; color: var(--text2); }
+
+    /* ── How it works ── */
+    .steps { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 24px; margin-top: 48px; }
+    .step {
+      display: flex; align-items: flex-start; gap: 16px;
+    }
+    .step-num {
+      flex-shrink: 0;
+      width: 40px; height: 40px;
+      background: rgba(0,245,255,.1);
+      border: 1px solid rgba(0,245,255,.3);
+      border-radius: 10px;
+      display: flex; align-items: center; justify-content: center;
+      font-family: var(--mono);
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--cyan);
+    }
+    .step-text h4 { font-size: 15px; margin-bottom: 4px; }
+    .step-text p { font-size: 13px; color: var(--text2); }
+
+    /* ── Platforms (CasaOS etc) ── */
+    .platform-list {
+      display: flex; flex-wrap: wrap; gap: 12px; margin-top: 32px;
+    }
+    .platform-pill {
+      display: inline-flex; align-items: center; gap: 8px;
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      border-radius: 100px;
+      padding: 8px 20px;
+      font-size: 14px;
+    }
+    .platform-pill:hover { border-color: var(--cyan); cursor: default; }
+
+    /* ── FAQ ── */
+    .faq-list { margin-top: 48px; display: flex; flex-direction: column; gap: 16px; }
+    .faq-item {
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+    }
+    .faq-q {
+      padding: 20px 24px;
+      font-weight: 600;
+      cursor: pointer;
+      display: flex; justify-content: space-between; align-items: center;
+      user-select: none;
+    }
+    .faq-q:hover { background: var(--bg3); }
+    .faq-arrow { color: var(--text2); transition: transform .2s; }
+    .faq-item.open .faq-arrow { transform: rotate(180deg); }
+    .faq-a {
+      padding: 0 24px;
+      max-height: 0;
+      overflow: hidden;
+      transition: max-height .3s ease, padding .3s;
+      color: var(--text2);
+      font-size: 14px;
+      line-height: 1.7;
+    }
+    .faq-item.open .faq-a { max-height: 300px; padding: 0 24px 20px; }
+
+    /* ── Footer ── */
+    footer {
+      background: var(--bg2);
+      border-top: 1px solid var(--border);
+      padding: 48px 0 32px;
+    }
+    .footer-inner {
+      display: grid;
+      grid-template-columns: 1.5fr repeat(3, 1fr);
+      gap: 48px;
+    }
+    .footer-brand h3 {
+      font-family: var(--mono);
+      color: var(--cyan);
+      font-size: 20px;
+      margin-bottom: 12px;
+    }
+    .footer-brand p { font-size: 14px; color: var(--text2); line-height: 1.7; }
+    .footer-col h4 { font-size: 13px; text-transform: uppercase; letter-spacing: 1px; color: var(--text2); margin-bottom: 16px; }
+    .footer-col ul { list-style: none; display: flex; flex-direction: column; gap: 10px; }
+    .footer-col a { font-size: 14px; color: var(--text2); transition: color .2s; }
+    .footer-col a:hover { color: var(--cyan); }
+    .footer-bottom {
+      display: flex; justify-content: space-between; align-items: center;
+      padding-top: 32px;
+      margin-top: 32px;
+      border-top: 1px solid var(--border);
+      font-size: 13px;
+      color: var(--text3);
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .no-track {
+      display: inline-flex; align-items: center; gap: 6px;
+      background: rgba(0,255,136,.08);
+      border: 1px solid rgba(0,255,136,.2);
+      color: var(--green);
+      border-radius: 100px;
+      padding: 4px 12px;
+      font-size: 12px;
+    }
+
+    /* ── Tor section ── */
+    .tor-check-box {
+      background: rgba(0,245,255,.04);
+      border: 1px solid rgba(0,245,255,.15);
+      border-radius: 16px;
+      padding: 32px;
+      margin-top: 48px;
+      display: flex;
+      align-items: center;
+      gap: 32px;
+      flex-wrap: wrap;
+    }
+    .tor-check-icon { font-size: 48px; }
+    .tor-check-text h4 { font-size: 18px; margin-bottom: 6px; }
+    .tor-check-text p { font-size: 14px; color: var(--text2); max-width: 480px; }
+    .tor-check-text p a { color: var(--cyan); }
+
+    /* ── Responsive ── */
+    @media (max-width: 768px) {
+      section { padding: 64px 0; }
+      .nav-links { display: none; }
+      .web-app-banner { text-align: center; justify-content: center; }
+      .footer-inner { grid-template-columns: 1fr 1fr; }
+    }
+    @media (max-width: 480px) {
+      .footer-inner { grid-template-columns: 1fr; }
+      .hero-buttons { flex-direction: column; align-items: center; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ── Nav ── -->
+<nav>
+  <div class="nav-inner">
+    <div class="nav-logo">Cipher<span>Node</span></div>
+    <ul class="nav-links">
+      <li><a href="#features">Özellikler</a></li>
+      <li><a href="#downloads">İndir</a></li>
+      <li><a href="#selfhost">Kendi Sunucu</a></li>
+      <li><a href="#faq">SSS</a></li>
+      <li><a href="#webapp" class="nav-cta">Web Uygulaması →</a></li>
+    </ul>
+  </div>
+</nav>
+
+<!-- ── Hero ── -->
+<section class="hero">
+  <div class="container">
+    <div class="hero-badge">E2E ŞİFRELİ &nbsp;·&nbsp; TOR DESTEKLI &nbsp;·&nbsp; AÇIK KAYNAK</div>
+    <h1>Sansürsüz.<br/>İzlenemez. Özgür.</h1>
+    <p class="hero-sub">
+      OpenPGP RSA-4096 şifreleme, Tor ağı desteği ve merkezi sunucu olmadan çalışan anonim mesajlaşma uygulaması.
+    </p>
+    <div class="hero-buttons">
+      <a href="#downloads" class="btn btn-primary">
+        ⬇ Uygulamayı İndir
+      </a>
+      <a id="webapp-btn" href="#webapp" class="btn btn-web">
+        🌐 Web Uygulamasını Aç
+      </a>
+      <a href="#selfhost" class="btn btn-secondary">
+        🖥 Kendi Sunucunu Kur
+      </a>
+    </div>
+  </div>
+</section>
+
+<!-- ── Stats ── -->
+<div class="stats-bar">
+  <div class="container">
+    <div class="stats-inner">
+      <div>
+        <div class="stat-value">RSA-4096</div>
+        <div class="stat-label">Şifreleme Gücü</div>
+      </div>
+      <div>
+        <div class="stat-value">0 log</div>
+        <div class="stat-label">Sunucu Kaydı</div>
+      </div>
+      <div>
+        <div class="stat-value">E2EE</div>
+        <div class="stat-label">Uçtan Uca Şifreleme</div>
+      </div>
+      <div>
+        <div class="stat-value">Tor</div>
+        <div class="stat-label">Ağ Gizliliği</div>
+      </div>
+      <div>
+        <div class="stat-value">4 platform</div>
+        <div class="stat-label">Android · iOS · Desktop · Web</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Features ── -->
+<section id="features">
+  <div class="container">
+    <p class="section-label">Özellikler</p>
+    <h2 class="section-title">Gizlilik, uzlaşı değil bir standart</h2>
+    <p class="section-desc">Her özellik sıfırdan gizlilik göz önünde bulundurularak tasarlandı.</p>
+
+    <div class="features-grid">
+      <div class="feature-card">
+        <div class="feature-icon">🔐</div>
+        <div class="feature-title">OpenPGP RSA-4096</div>
+        <div class="feature-desc">Mesajlar gönderilmeden önce alıcının açık anahtarıyla şifrelenir. Sunucu şifreli veriyi asla göremez. İmzalama desteğiyle kimlik doğrulama.</div>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon" style="background:rgba(184,119,255,.1)">🧅</div>
+        <div class="feature-title">Tor Ağı Desteği</div>
+        <div class="feature-desc">Masaüstünde Tor otomatik yönetilir. Mobilde Orbot ile tüm trafik Tor'a yönlenir. .onion adresli kendi relay sunucunuzu kurabilirsiniz.</div>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon" style="background:rgba(0,255,136,.1)">⚡</div>
+        <div class="feature-title">P2P Mesajlaşma</div>
+        <div class="feature-desc">Sadece P2P modunda relay sunucusu devre dışı kalır. Mesajlar sadece alıcı çevrimiçiyken iletilir. Çevrimdışı kuyruk opsiyoneldir.</div>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">📁</div>
+        <div class="feature-title">Şifreli Dosya Paylaşımı</div>
+        <div class="feature-desc">Dosyalar client-side şifrelendikten sonra yüklenir. İndirme limiti ve 24 saatlik TTL. AES anahtarı alıcının PGP anahtarıyla sarmalanır.</div>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon" style="background:rgba(184,119,255,.1)">🎲</div>
+        <div class="feature-title">Anonim Eşleştirme</div>
+        <div class="feature-desc">Gerçek kimlik paylaşılmadan rastgele kullanıcılarla bağlantı kurulur. Takma ad sistemi ile oturumlar izole edilir.</div>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon" style="background:rgba(255,184,0,.1)">🔤</div>
+        <div class="feature-title">Steganografi Modu</div>
+        <div class="feature-desc">PGP şifreli payload'ı görünmez Unicode karakterlere gömer. Normal metin gibi görünen mesajlar aslında şifreli veri taşır.</div>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon" style="background:rgba(0,255,136,.1)">👻</div>
+        <div class="feature-title">Hayalet Modu</div>
+        <div class="feature-desc">Yazıyor göstergesi ve okundu bilgisi gönderilmez. Karşı taraf ne zaman yazdığınızı bilemez.</div>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">🌐</div>
+        <div class="feature-title">Çapraz Platform</div>
+        <div class="feature-desc">Android, iOS, Windows, macOS, Linux ve Web tarayıcısında aynı deneyim. Electron masaüstü, React Native mobil, Expo web.</div>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon" style="background:rgba(184,119,255,.1)">🏠</div>
+        <div class="feature-title">Kendi Sunucun</div>
+        <div class="feature-desc">Docker, Termux, CasaOS, Unraid ile dakikalar içinde kendi relay sunucunuzu kurun. Kayıt yok, izleme yok, tam kontrol.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── Tor Check ── -->
+<section id="tor">
+  <div class="container">
+    <p class="section-label">Tor Gizliliği</p>
+    <h2 class="section-title">Gerçekten anonim misiniz?</h2>
+
+    <div class="tor-check-box">
+      <div class="tor-check-icon">🧅</div>
+      <div class="tor-check-text">
+        <h4>Tor Bağlantınızı Doğrulayın</h4>
+        <p>
+          Uygulama <strong>check.torproject.org</strong> API'sini kullanarak trafiğinizin gerçekten Tor üzerinden geçip geçmediğini doğrular.
+          Tarayıcıda da kontrol edebilirsiniz:
+          <a href="https://check.torproject.org" target="_blank" rel="noopener">check.torproject.org →</a>
+        </p>
+        <br/>
+        <p style="font-size:13px; color:var(--text3)">
+          Mobil: Orbot uygulamasını yükleyin → "Tüm Uygulamalar için VPN" modunu etkinleştirin → Ayarlar'da Tor'u açın.<br/>
+          Masaüstü: Electron uygulamasında Tor otomatik yönetilir, binary yoksa otomatik indirilir.
+        </p>
+      </div>
+      <a href="https://check.torproject.org" target="_blank" rel="noopener" class="btn btn-secondary">
+        🔍 Kontrol Et
+      </a>
+    </div>
+  </div>
+</section>
+
+<!-- ── Downloads ── -->
+<section id="downloads">
+  <div class="container">
+    <p class="section-label">İndir</p>
+    <h2 class="section-title">Tüm platformlar için</h2>
+    <p class="section-desc">Tercih ettiğiniz platformda indirin ve kurulum gerekmeden kullanmaya başlayın.</p>
+
+    <div class="downloads-grid">
+      <a href="#" class="download-card" id="dl-android">
+        <div class="download-icon">🤖</div>
+        <div class="download-name">Android</div>
+        <div class="download-desc">Android 10+</div>
+        <div class="download-badge" id="dl-android-badge">APK · Hazırlanıyor...</div>
+      </a>
+      <a href="#" class="download-card" id="dl-ios">
+        <div class="download-icon">🍎</div>
+        <div class="download-name">iOS / iPadOS</div>
+        <div class="download-desc">iOS 16+</div>
+        <div class="download-badge soon">Yakında</div>
+      </a>
+      <a href="#" class="download-card" id="dl-win">
+        <div class="download-icon">🪟</div>
+        <div class="download-name">Windows</div>
+        <div class="download-desc">Windows 10/11 · Kurulum</div>
+        <div class="download-badge">Electron · Setup .exe</div>
+      </a>
+      <a href="#" class="download-card" id="dl-win-portable">
+        <div class="download-icon">💼</div>
+        <div class="download-name">Windows Portable</div>
+        <div class="download-desc">Windows 10/11 · Kurulum gerektirmez</div>
+        <div class="download-badge">Electron · Portable .exe</div>
+      </a>
+      <a href="#" class="download-card" id="dl-mac">
+        <div class="download-icon">🍏</div>
+        <div class="download-name">macOS</div>
+        <div class="download-desc">macOS 12+</div>
+        <div class="download-badge soon">Yakında</div>
+      </a>
+      <a href="#" class="download-card" id="dl-linux">
+        <div class="download-icon">🐧</div>
+        <div class="download-name">Linux</div>
+        <div class="download-desc">Ubuntu / Arch / Fedora</div>
+        <div class="download-badge soon">Yakında</div>
+      </a>
+      <a href="#webapp" class="download-card">
+        <div class="download-icon">🌐</div>
+        <div class="download-name">Web Tarayıcı</div>
+        <div class="download-desc">Kurulum gerektirmez</div>
+        <div class="download-badge">PWA Destekli</div>
+      </a>
+    </div>
+
+    <!-- Web App Banner -->
+    <div class="web-app-banner" id="webapp">
+      <div>
+        <h3>🌐 Web Uygulamasını Kullan</h3>
+        <p>
+          Herhangi bir tarayıcıda kurulum gerektirmeden CipherNode'u kullanın.
+          Gizlilik için <strong>Tor Browser</strong>'da açmanızı öneririz — tüm trafik otomatik olarak Tor'a yönlenir.
+        </p>
+        <br/>
+        <p style="font-size:13px; color:var(--text3)">
+          Not: Web sürümü bazı özellikler için sisteme bağımlıdır (Tor, biyometrik kilit).
+          Maksimum gizlilik için masaüstü veya mobil uygulamayı tercih edin.
+        </p>
+      </div>
+      <div style="display:flex; flex-direction:column; gap:12px; align-items:center;">
+        <a href="/app" id="open-webapp-btn" class="btn btn-web" style="white-space:nowrap">
+          → Web Uygulamasını Aç
+        </a>
+        <a href="https://www.torproject.org/download/" target="_blank" rel="noopener"
+           class="btn btn-secondary" style="white-space:nowrap; font-size:13px;">
+          🧅 Tor Browser ile Aç
+        </a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── How it works ── -->
+<section>
+  <div class="container">
+    <p class="section-label">Nasıl Çalışır</p>
+    <h2 class="section-title">Sade ve güvenli</h2>
+    <div class="steps">
+      <div class="step">
+        <div class="step-num">01</div>
+        <div class="step-text">
+          <h4>Kimlik Oluştur</h4>
+          <p>Uygulama açıldığında RSA-4096 anahtar çifti otomatik oluşturulur. Hiçbir kişisel bilgi istenmez.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">02</div>
+        <div class="step-text">
+          <h4>Kişi Ekle</h4>
+          <p>8 karakterli kimlik kodu veya QR ile kişi ekleyin. Açık anahtar exchange otomatik gerçekleşir.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">03</div>
+        <div class="step-text">
+          <h4>Şifreli Mesajlaş</h4>
+          <p>Her mesaj gönderilmeden önce alıcının açık anahtarıyla şifrelenir. Relay sunucusu şifreli veriyi göremez.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">04</div>
+        <div class="step-text">
+          <h4>Tor ile Anonimleş</h4>
+          <p>Tor'u etkinleştirince trafik Tor ağı üzerinden geçer. IP adresiniz relay sunucusundan da gizlenir.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── Self-host ── -->
+<section id="selfhost">
+  <div class="container">
+    <p class="section-label">Kendi Sunucu</p>
+    <h2 class="section-title">Tam kontrol sizde</h2>
+    <p class="section-desc">Relay sunucusunu kendi altyapınızda çalıştırın. Herkes sizin sunucunuza bağlanabilir, ya da kendi sunucusunu kurabilir.</p>
+
+    <div class="selfhost-grid" style="margin-top:48px">
+
+      <div class="selfhost-card">
+        <div class="selfhost-header">
+          <span style="font-size:24px">🐳</span>
+          <div>
+            <div class="selfhost-platform">Docker</div>
+            <div style="font-size:12px;color:var(--text2)">Linux · macOS · Windows</div>
+          </div>
+        </div>
+        <div class="selfhost-body">
+          <div class="code-block">
+            <span class="comment"># Repo'yu klonla</span><br/>
+            <span class="cmd">git clone</span> https://github.com/.../ciphernode<br/>
+            <span class="cmd">cd</span> ciphernode<br/><br/>
+            <span class="comment"># Başlat</span><br/>
+            <span class="cmd">docker compose up -d</span>
+          </div>
+          <div class="selfhost-note">Port 5000 otomatik açılır. SSL için Cloudflare Tunnel veya <code>scripts/setup-ssl.sh</code> kullanın.</div>
+        </div>
+      </div>
+
+      <div class="selfhost-card">
+        <div class="selfhost-header">
+          <span style="font-size:24px">📱</span>
+          <div>
+            <div class="selfhost-platform">Termux (Android)</div>
+            <div style="font-size:12px;color:var(--text2)">Android telefon = sunucu</div>
+          </div>
+        </div>
+        <div class="selfhost-body">
+          <div class="code-block">
+            <span class="comment"># Termux'ta çalıştır</span><br/>
+            <span class="cmd">bash termux-start.sh</span><br/><br/>
+            <span class="comment"># Tor hidden service ile</span><br/>
+            <span class="cmd">bash termux-start.sh</span> tor<br/><br/>
+            <span class="comment"># Cloudflare Tunnel ile</span><br/>
+            <span class="cmd">bash termux-start.sh</span> cloudflare
+          </div>
+          <div class="selfhost-note">Termux F-Droid'den indirilebilir. Tüm bağımlılıklar otomatik kurulur.</div>
+        </div>
+      </div>
+
+      <div class="selfhost-card">
+        <div class="selfhost-header">
+          <span style="font-size:24px">🖥</span>
+          <div>
+            <div class="selfhost-platform">Linux / VPS</div>
+            <div style="font-size:12px;color:var(--text2)">Ubuntu · Debian · Arch</div>
+          </div>
+        </div>
+        <div class="selfhost-body">
+          <div class="code-block">
+            <span class="comment"># Sunucu başlat</span><br/>
+            <span class="cmd">npm run server:build</span><br/>
+            <span class="cmd">npm run server:prod</span><br/><br/>
+            <span class="comment"># SSL (Let's Encrypt + nginx)</span><br/>
+            <span class="cmd">sudo bash</span> scripts/setup-ssl.sh \<br/>
+            &nbsp;&nbsp;relay.example.com
+          </div>
+          <div class="selfhost-note">Otomatik systemd servisi, sertifika yenileme ve reverse proxy kurulur.</div>
+        </div>
+      </div>
+
+      <div class="selfhost-card">
+        <div class="selfhost-header">
+          <span style="font-size:24px">🌐</span>
+          <div>
+            <div class="selfhost-platform">ngrok / Cloudflare Tunnel</div>
+            <div style="font-size:12px;color:var(--text2)">CGNAT arkasında bile çalışır</div>
+          </div>
+        </div>
+        <div class="selfhost-body">
+          <div class="code-block">
+            <span class="comment"># ngrok (SSL otomatik)</span><br/>
+            <span class="cmd">bash</span> scripts/setup-ngrok.sh TOKEN<br/><br/>
+            <span class="comment"># Cloudflare (ücretsiz, kayıt yok)</span><br/>
+            <span class="cmd">bash</span> scripts/setup-cloudflare.sh
+          </div>
+          <div class="selfhost-note">URL otomatik gösterilir. Uygulamada Özel Sunucu olarak girin.</div>
+        </div>
+      </div>
+
+      <div class="selfhost-card">
+        <div class="selfhost-header">
+          <span style="font-size:24px">🏠</span>
+          <div>
+            <div class="selfhost-platform">CasaOS / Umbrel</div>
+            <div style="font-size:12px;color:var(--text2)">NAS · Raspberry Pi · Home Server</div>
+          </div>
+        </div>
+        <div class="selfhost-body">
+          <div class="code-block">
+            <span class="comment"># CasaOS App Store'dan</span><br/>
+            Custom App → Docker Compose:<br/><br/>
+            image: <span class="string">ciphernode/relay</span><br/>
+            ports: <span class="string">"5000:5000"</span>
+          </div>
+          <div class="selfhost-note">casaos/ ve unraid/ klasörlerinde hazır manifest dosyaları bulunur.</div>
+        </div>
+      </div>
+
+      <div class="selfhost-card">
+        <div class="selfhost-header">
+          <span style="font-size:24px">🧅</span>
+          <div>
+            <div class="selfhost-platform">Tor Hidden Service</div>
+            <div style="font-size:12px;color:var(--text2)">.onion — tamamen anonim</div>
+          </div>
+        </div>
+        <div class="selfhost-body">
+          <div class="code-block">
+            <span class="comment"># .onion adresi oluştur</span><br/>
+            <span class="cmd">bash</span> scripts/setup-tor-hidden-service.sh<br/><br/>
+            <span class="comment"># Çıktı:</span><br/>
+            .onion: <span class="string">abc123...xyz.onion</span>
+          </div>
+          <div class="selfhost-note">Port forwarding gerekmez. Sunucu IP'si tamamen gizli kalır.</div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Desteklenen platformlar -->
+    <div style="margin-top:48px">
+      <p class="section-label">Desteklenen Altyapılar</p>
+      <div class="platform-list">
+        <div class="platform-pill">🐳 Docker</div>
+        <div class="platform-pill">📦 Docker Compose</div>
+        <div class="platform-pill">🏠 CasaOS</div>
+        <div class="platform-pill">🏠 Umbrel</div>
+        <div class="platform-pill">🔳 Unraid</div>
+        <div class="platform-pill">🍓 Raspberry Pi</div>
+        <div class="platform-pill">☁️ VPS (Hetzner / DigitalOcean)</div>
+        <div class="platform-pill">📱 Termux</div>
+        <div class="platform-pill">🧅 Tor (.onion)</div>
+        <div class="platform-pill">🌐 ngrok</div>
+        <div class="platform-pill">☁️ Cloudflare Tunnel</div>
+        <div class="platform-pill">🦆 DuckDNS</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── Windows instructions ── -->
+<section>
+  <div class="container">
+    <p class="section-label">Windows</p>
+    <h2 class="section-title">Windows'ta Sunucu Kurulumu</h2>
+    <div class="selfhost-grid">
+      <div class="selfhost-card">
+        <div class="selfhost-header">
+          <span style="font-size:24px">🪟</span>
+          <div>
+            <div class="selfhost-platform">PowerShell Script</div>
+            <div style="font-size:12px;color:var(--text2)">Otomatik kurulum</div>
+          </div>
+        </div>
+        <div class="selfhost-body">
+          <div class="code-block">
+            <span class="comment"># PowerShell'i yönetici olarak aç</span><br/>
+            <span class="cmd">Set-ExecutionPolicy</span> Bypass -Scope Process<br/><br/>
+            <span class="comment"># Sunucu başlat</span><br/>
+            <span class="cmd">.\scripts\windows-start.ps1</span><br/><br/>
+            <span class="comment"># ngrok ile dış erişim</span><br/>
+            <span class="cmd">.\scripts\windows-start.ps1</span> -Mode ngrok<br/><br/>
+            <span class="comment"># Cloudflare Tunnel</span><br/>
+            <span class="cmd">.\scripts\windows-start.ps1</span> -Mode cloudflare
+          </div>
+        </div>
+      </div>
+      <div class="selfhost-card">
+        <div class="selfhost-header">
+          <span style="font-size:24px">🐳</span>
+          <div>
+            <div class="selfhost-platform">Docker Desktop</div>
+            <div style="font-size:12px;color:var(--text2)">Docker Desktop gerekli</div>
+          </div>
+        </div>
+        <div class="selfhost-body">
+          <div class="code-block">
+            <span class="comment"># Docker Desktop kurulumu sonrası</span><br/>
+            <span class="cmd">docker compose up -d</span><br/><br/>
+            <span class="comment"># Otomatik: PowerShell ile</span><br/>
+            <span class="cmd">.\scripts\windows-start.ps1</span> -Mode docker
+          </div>
+          <div class="selfhost-note">Docker Desktop <a href="https://www.docker.com/products/docker-desktop/" target="_blank">docker.com</a>'dan indirilebilir.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── FAQ ── -->
+<section id="faq">
+  <div class="container">
+    <p class="section-label">SSS</p>
+    <h2 class="section-title">Sık Sorulan Sorular</h2>
+
+    <div class="faq-list">
+      <div class="faq-item">
+        <div class="faq-q" onclick="toggleFaq(this)">
+          Merkezi bir sunucu var mı?
+          <span class="faq-arrow">▼</span>
+        </div>
+        <div class="faq-a">
+          CipherNode'un herhangi bir resmi merkezi sunucusu yoktur. Kullanıcılar kendi relay sunucularını kurar veya başkasının sunucusuna bağlanır. Tüm relay sunucuları mesajları RAM'de tutar ve iletimden sonra siler. Kayıt dosyası oluşturulmaz.
+        </div>
+      </div>
+      <div class="faq-item">
+        <div class="faq-q" onclick="toggleFaq(this)">
+          Relay sunucusu mesajları okuyabilir mi?
+          <span class="faq-arrow">▼</span>
+        </div>
+        <div class="faq-a">
+          Hayır. Mesajlar gönderilmeden önce alıcının açık anahtarıyla şifrelenir (OpenPGP RSA-4096). Relay sunucusu sadece şifreli veriyi iletir ve asla içeriğe erişemez. İmzalı mesajlar için gönderici kimliği de doğrulanabilir.
+        </div>
+      </div>
+      <div class="faq-item">
+        <div class="faq-q" onclick="toggleFaq(this)">
+          Tor Browser web uygulamasında çalışır mı?
+          <span class="faq-arrow">▼</span>
+        </div>
+        <div class="faq-a">
+          Evet. Web uygulamasını Tor Browser'da açarsanız tüm trafik otomatik olarak Tor üzerinden geçer. Ekstra ayar gerekmez. Relay sunucunuz .onion adresiyle çalışıyorsa Ağ Ayarları'ndan özel sunucu olarak girebilirsiniz.
+        </div>
+      </div>
+      <div class="faq-item">
+        <div class="faq-q" onclick="toggleFaq(this)">
+          CGNAT arkasındayım, sunucu kurabilir miyim?
+          <span class="faq-arrow">▼</span>
+        </div>
+        <div class="faq-a">
+          Evet. Cloudflare Tunnel veya ngrok kullanarak CGNAT arkasından da sunucuyu dışarıya açabilirsiniz. Bu yöntemler port forwarding gerektirmez. Tor hidden service (.onion) da CGNAT'ı tamamen aşar.
+        </div>
+      </div>
+      <div class="faq-item">
+        <div class="faq-q" onclick="toggleFaq(this)">
+          Kimliğimi birden fazla cihazda kullanabilir miyim?
+          <span class="faq-arrow">▼</span>
+        </div>
+        <div class="faq-a">
+          Evet. Ayarlar → Kimliği Dışa Aktar ile JSON backup alabilirsiniz. Başka cihazda Kimliği İçe Aktar ile aynı PGP anahtarlarını ve kimlik kodunuzu yükleyebilirsiniz.
+        </div>
+      </div>
+      <div class="faq-item">
+        <div class="faq-q" onclick="toggleFaq(this)">
+          Açık kaynak mı?
+          <span class="faq-arrow">▼</span>
+        </div>
+        <div class="faq-a">
+          Evet. Tüm kaynak kodu GitHub'da açık olarak yayınlanmaktadır. Bağımsız güvenlik araştırmacıları tarafından incelenebilir.
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── Footer ── -->
+<footer>
+  <div class="container">
+    <div class="footer-inner">
+      <div class="footer-brand">
+        <h3>CipherNode</h3>
+        <p>Sansürsüz, izlenemez, özgür mesajlaşma. Gizlilik bir hak, uzlaşı değil.</p>
+        <br/>
+        <span class="no-track">✓ Kayıt yok &nbsp;·&nbsp; İzleme yok &nbsp;·&nbsp; Reklam yok</span>
+      </div>
+      <div class="footer-col">
+        <h4>Uygulama</h4>
+        <ul>
+          <li><a href="#downloads">Android İndir</a></li>
+          <li><a href="#downloads">Windows İndir</a></li>
+          <li><a href="#downloads">macOS İndir</a></li>
+          <li><a href="#downloads">Linux İndir</a></li>
+          <li><a href="#webapp">Web Uygulaması</a></li>
+        </ul>
+      </div>
+      <div class="footer-col">
+        <h4>Kurulum</h4>
+        <ul>
+          <li><a href="#selfhost">Docker</a></li>
+          <li><a href="#selfhost">Termux</a></li>
+          <li><a href="#selfhost">Linux VPS</a></li>
+          <li><a href="#selfhost">CasaOS</a></li>
+          <li><a href="#selfhost">Tor .onion</a></li>
+        </ul>
+      </div>
+      <div class="footer-col">
+        <h4>Bağlantı</h4>
+        <ul>
+          <li><a href="https://github.com" target="_blank">GitHub</a></li>
+          <li><a href="https://check.torproject.org" target="_blank">Tor Kontrol</a></li>
+          <li><a href="https://www.torproject.org/download/" target="_blank">Tor Browser</a></li>
+          <li><a href="https://orbot.app" target="_blank">Orbot (Android)</a></li>
+          <li><a href="#faq">SSS</a></li>
+        </ul>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <span>© 2025 CipherNode — Açık Kaynak</span>
+      <span>OpenPGP · Socket.io · Expo · Electron</span>
+    </div>
+  </div>
+</footer>
+
+<script>
+  /* FAQ accordion */
+  function toggleFaq(el) {
+    const item = el.parentElement;
+    item.classList.toggle('open');
+  }
+
+  /* Web app button — sunucu URL'ini dinamik ayarla */
+  (function() {
+    const serverUrl = window.location.origin;
+    const webAppBtn = document.getElementById('open-webapp-btn');
+    const heroWebBtn = document.getElementById('webapp-btn');
+    if (webAppBtn) webAppBtn.href = serverUrl + '/app';
+    if (heroWebBtn) heroWebBtn.href = serverUrl + '/app';
+
+    // Windows indirme linkleri — sunucudan serve ediliyor
+    const winSetup = document.getElementById('dl-win');
+    const winPortable = document.getElementById('dl-win-portable');
+    if (winSetup) winSetup.href = serverUrl + '/downloads/CipherNode%20Setup%201.0.0.exe';
+    if (winPortable) winPortable.href = serverUrl + '/downloads/CipherNode%201.0.0.exe';
+
+    // Android APK — EAS Build API'sinden otomatik çek
+    fetch('/api/latest-apk')
+      .then(r => r.ok ? r.json() : null)
+      .then(data => {
+        if (data && data.url) {
+          const el = document.getElementById('dl-android');
+          const badge = document.getElementById('dl-android-badge');
+          if (el) el.href = data.url;
+          if (badge) badge.textContent = 'APK · İndir';
+        }
+      })
+      .catch(() => {});
+  })();
+
+  /* Smooth scroll için offset (fixed nav) */
+  document.querySelectorAll('a[href^="#"]').forEach(a => {
+    a.addEventListener('click', e => {
+      const target = document.querySelector(a.getAttribute('href'));
+      if (!target) return;
+      e.preventDefault();
+      const offset = 72;
+      window.scrollTo({ top: target.offsetTop - offset, behavior: 'smooth' });
+    });
+  });
+</script>
+</body>
+</html>

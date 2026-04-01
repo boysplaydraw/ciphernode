@@ -13,7 +13,7 @@ module.exports = function withDisableLint(config) {
     lintOptions {
         checkReleaseBuilds false
         abortOnError false
-    }`
+    }`,
       );
     }
     return config;

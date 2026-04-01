@@ -18,11 +18,17 @@ import { ThemedText } from "@/components/ThemedText";
 import { Colors, Spacing, BorderRadius, Fonts } from "@/constants/theme";
 import { KeyboardAwareScrollViewCompat } from "@/components/KeyboardAwareScrollViewCompat";
 import { parseContactId } from "@/lib/crypto";
-import { addContact, getContacts, updateContact } from "@/lib/storage";
+import {
+  addContact,
+  getContacts,
+  updateContact,
+  pushContactsToServer,
+} from "@/lib/storage";
 import { useIdentity } from "@/hooks/useIdentity";
 import type { RootStackParamList } from "@/navigation/RootStackNavigator";
 import { useLanguage } from "@/constants/language";
 import { getApiUrl } from "@/lib/query-client";
+
 import { lookupUserPublicKey } from "@/lib/socket";
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
@@ -38,25 +44,48 @@ export default function AddContactScreen() {
 
   const t = {
     scanQR: language === "tr" ? "QR Kod Tara" : "Scan QR Code",
-    scanQRSubtext: language === "tr" ? "Eklemek için kişinin QR kodunu tarayın" : "Scan a contact's QR code to add them",
+    scanQRSubtext:
+      language === "tr"
+        ? "Eklemek için kişinin QR kodunu tarayın"
+        : "Scan a contact's QR code to add them",
     or: language === "tr" ? "VEYA" : "OR",
     enterContactId: language === "tr" ? "Kişi ID'si Girin" : "Enter Contact ID",
     addContact: language === "tr" ? "Kişi Ekle" : "Add Contact",
     adding: language === "tr" ? "Ekleniyor..." : "Adding...",
     shareYourId: language === "tr" ? "ID'nizi Paylaşın" : "Share Your ID",
-    othersCanScan: language === "tr" ? "Diğerleri sizi eklemek için bunu tarayabilir" : "Others can scan this to add you",
+    othersCanScan:
+      language === "tr"
+        ? "Diğerleri sizi eklemek için bunu tarayabilir"
+        : "Others can scan this to add you",
     copied: language === "tr" ? "Kopyalandı" : "Copied",
-    copiedToClipboard: language === "tr" ? "ID'niz panoya kopyalandı" : "Your ID has been copied to clipboard",
+    copiedToClipboard:
+      language === "tr"
+        ? "ID'niz panoya kopyalandı"
+        : "Your ID has been copied to clipboard",
     invalidId: language === "tr" ? "Geçersiz ID" : "Invalid ID",
-    invalidIdMsg: language === "tr" ? "Geçerli bir kişi ID'si girin (format: XXXX-XXXX)" : "Please enter a valid contact ID (format: XXXX-XXXX)",
+    invalidIdMsg:
+      language === "tr"
+        ? "Geçerli bir kişi ID'si girin (format: XXXX-XXXX)"
+        : "Please enter a valid contact ID (format: XXXX-XXXX)",
     error: language === "tr" ? "Hata" : "Error",
-    cannotAddSelf: language === "tr" ? "Kendinizi kişi olarak ekleyemezsiniz" : "You cannot add yourself as a contact",
+    cannotAddSelf:
+      language === "tr"
+        ? "Kendinizi kişi olarak ekleyemezsiniz"
+        : "You cannot add yourself as a contact",
     alreadyAdded: language === "tr" ? "Zaten Ekli" : "Already Added",
-    alreadyAddedMsg: language === "tr" ? "Bu kişi zaten listenizde" : "This contact is already in your list",
+    alreadyAddedMsg:
+      language === "tr"
+        ? "Bu kişi zaten listenizde"
+        : "This contact is already in your list",
     success: language === "tr" ? "Başarılı" : "Success",
-    contactAdded: language === "tr" ? "Kişi başarıyla eklendi" : "Contact added successfully",
-    failedToAdd: language === "tr" ? "Kişi eklenemedi" : "Failed to add contact",
-    generatingIdentity: language === "tr" ? "Kimlik oluşturuluyor..." : "Generating identity...",
+    contactAdded:
+      language === "tr"
+        ? "Kişi başarıyla eklendi"
+        : "Contact added successfully",
+    failedToAdd:
+      language === "tr" ? "Kişi eklenemedi" : "Failed to add contact",
+    generatingIdentity:
+      language === "tr" ? "Kimlik oluşturuluyor..." : "Generating identity...",
   };
 
   const handleScanQR = () => {
@@ -99,7 +128,9 @@ export default function AddContactScreen() {
 
       try {
         const apiUrl = getApiUrl();
-        const res = await fetch(`${apiUrl}api/users/${encodeURIComponent(parsedId)}/publickey`);
+        const res = await fetch(
+          `${apiUrl}api/users/${encodeURIComponent(parsedId)}/publickey`,
+        );
         if (res.ok) {
           const data = await res.json();
           if (data.publicKey) {
@@ -124,7 +155,8 @@ export default function AddContactScreen() {
       let fingerprint = parsedId;
       if (publicKey) {
         try {
-          const { parseContactId: _p, ...cryptoModule } = await import("@/lib/crypto");
+          const { parseContactId: _p, ...cryptoModule } =
+            await import("@/lib/crypto");
           // @ts-ignore — parsePublicKeyFingerprint opsiyonel
           const { parsePublicKeyFingerprint } = cryptoModule;
           if (typeof parsePublicKeyFingerprint === "function") {
@@ -144,6 +176,13 @@ export default function AddContactScreen() {
         addedAt: Date.now(),
       });
 
+      // Kişi listesini diğer cihazlarla senkronize et
+      if (identity?.id) {
+        try {
+          await pushContactsToServer(identity.id, getApiUrl());
+        } catch {}
+      }
+
       if (Platform.OS !== "web") {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       }
@@ -151,26 +190,24 @@ export default function AddContactScreen() {
 
       // 4. Kullanıcıya durumu bildir
       const successMsg = publicKey
-        ? (language === "tr"
-            ? "Kişi eklendi. Açık anahtar alındı, mesajlar şifreli gönderilecek."
-            : "Contact added. Public key received, messages will be encrypted.")
-        : (language === "tr"
-            ? "Kişi eklendi. Açık anahtar henüz yok — kişi ilk kez uygulamaya bağlandığında otomatik senkronize edilecek."
-            : "Contact added. No public key yet — it will sync automatically when they first connect.");
+        ? language === "tr"
+          ? "Kişi eklendi. Açık anahtar alındı, mesajlar şifreli gönderilecek."
+          : "Contact added. Public key received, messages will be encrypted."
+        : language === "tr"
+          ? "Kişi eklendi. Açık anahtar henüz yok — kişi ilk kez uygulamaya bağlandığında otomatik senkronize edilecek."
+          : "Contact added. No public key yet — it will sync automatically when they first connect.";
 
       Alert.alert(t.success, successMsg, [
         {
           text: "OK",
           onPress: () => {
-            navigation.dispatch(
-              CommonActions.navigate({
-                name: "ChatsTab",
-                params: {
-                  screen: "ChatThread",
-                  params: { contactId: parsedId },
-                },
-              })
-            );
+            (navigation as any).navigate("Main", {
+              screen: "ChatsTab",
+              params: {
+                screen: "ChatThread",
+                params: { contactId: parsedId },
+              },
+            });
           },
         },
       ]);
@@ -184,7 +221,9 @@ export default function AddContactScreen() {
   if (loading) {
     return (
       <View style={[styles.container, styles.loadingContainer]}>
-        <ThemedText style={styles.loadingText}>{t.generatingIdentity}</ThemedText>
+        <ThemedText style={styles.loadingText}>
+          {t.generatingIdentity}
+        </ThemedText>
       </View>
     );
   }
@@ -248,7 +287,8 @@ export default function AddContactScreen() {
           <ThemedText
             style={[
               styles.addButtonText,
-              (!contactIdInput.trim() || isAdding) && styles.addButtonTextDisabled,
+              (!contactIdInput.trim() || isAdding) &&
+                styles.addButtonTextDisabled,
             ]}
           >
             {isAdding ? t.adding : t.addContact}
@@ -266,16 +306,17 @@ export default function AddContactScreen() {
               pressed && styles.idDisplayPressed,
             ]}
           >
-            <ThemedText style={styles.idText}>{identity?.id || "..."}</ThemedText>
+            <ThemedText style={styles.idText}>
+              {identity?.id || "..."}
+            </ThemedText>
             <Feather name="copy" size={18} color={Colors.dark.textSecondary} />
           </Pressable>
 
           <View style={styles.qrContainer}>
-            {identity?.publicKey ? (
+            {identity?.id ? (
               <QRCode
                 value={JSON.stringify({
                   id: identity.id,
-                  publicKey: identity.publicKey,
                 })}
                 size={180}
                 backgroundColor={Colors.dark.backgroundSecondary}
@@ -283,9 +324,7 @@ export default function AddContactScreen() {
               />
             ) : null}
           </View>
-          <ThemedText style={styles.qrHint}>
-            {t.othersCanScan}
-          </ThemedText>
+          <ThemedText style={styles.qrHint}>{t.othersCanScan}</ThemedText>
         </View>
       </View>
     </KeyboardAwareScrollViewCompat>

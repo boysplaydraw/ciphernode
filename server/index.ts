@@ -7,6 +7,9 @@ import * as path from "path";
 const app = express();
 const log = console.log;
 
+// AWS ALB, GCloud Load Balancer, Nginx arkasında çalışmak için
+app.set("trust proxy", 1);
+
 declare module "http" {
   interface IncomingMessage {
     rawBody: unknown;
@@ -15,29 +18,22 @@ declare module "http" {
 
 function setupCors(app: express.Application) {
   app.use((req, res, next) => {
-    const origins = new Set<string>();
-
-    if (process.env.REPLIT_DEV_DOMAIN) {
-      origins.add(`https://${process.env.REPLIT_DEV_DOMAIN}`);
-    }
-
-    if (process.env.REPLIT_DOMAINS) {
-      process.env.REPLIT_DOMAINS.split(",").forEach((d: string) => {
-        origins.add(`https://${d.trim()}`);
-      });
-    }
-
+    // Tüm origin'lere izin ver — local, Docker, Termux, Tor, ngrok, Replit
     const origin = req.header("origin");
-
-    if (origin && origins.has(origin)) {
+    if (origin) {
       res.header("Access-Control-Allow-Origin", origin);
-      res.header(
-        "Access-Control-Allow-Methods",
-        "GET, POST, PUT, DELETE, OPTIONS",
-      );
-      res.header("Access-Control-Allow-Headers", "Content-Type");
       res.header("Access-Control-Allow-Credentials", "true");
+    } else {
+      res.header("Access-Control-Allow-Origin", "*");
     }
+    res.header(
+      "Access-Control-Allow-Methods",
+      "GET, POST, PUT, DELETE, OPTIONS",
+    );
+    res.header(
+      "Access-Control-Allow-Headers",
+      "Content-Type, Authorization, bypass-tunnel-reminder, X-Tor-Enabled, X-Tor-Proxy",
+    );
 
     if (req.method === "OPTIONS") {
       return res.sendStatus(200);
@@ -48,15 +44,17 @@ function setupCors(app: express.Application) {
 }
 
 function setupBodyParsing(app: express.Application) {
+  const maxFileSizeMb = parseInt(process.env.MAX_FILE_SIZE_MB || "100", 10);
   app.use(
     express.json({
+      limit: `${maxFileSizeMb + 50}mb`,
       verify: (req, _res, buf) => {
         req.rawBody = buf;
       },
     }),
   );
 
-  app.use(express.urlencoded({ extended: false }));
+  app.use(express.urlencoded({ extended: false, limit: `${maxFileSizeMb + 50}mb` }));
 }
 
 function setupRequestLogging(app: express.Application) {
@@ -182,6 +180,12 @@ function configureExpoAndLanding(app: express.Application) {
     }
 
     if (req.path === "/") {
+      // Tarayıcıdan geliyorsa (Accept: text/html) marketing sitesini göster
+      const websitePath = path.resolve(process.cwd(), "website", "index.html");
+      const accept = req.header("accept") || "";
+      if (accept.includes("text/html") && fs.existsSync(websitePath)) {
+        return res.sendFile(websitePath);
+      }
       return serveLandingPage({
         req,
         res,
@@ -195,6 +199,38 @@ function configureExpoAndLanding(app: express.Application) {
 
   app.use("/assets", express.static(path.resolve(process.cwd(), "assets")));
   app.use(express.static(path.resolve(process.cwd(), "static-build")));
+
+  // Web uygulaması (/app) — Expo web export'u serve et
+  const webAppDir = path.resolve(process.cwd(), "dist");
+  if (fs.existsSync(webAppDir)) {
+    app.use("/app", express.static(webAppDir));
+    // SPA fallback — tüm /app/* route'larını index.html'e yönlendir
+    app.get("/app/*", (_req, res) => {
+      res.sendFile(path.join(webAppDir, "index.html"));
+    });
+    log("Web app served at /app");
+  }
+
+  // Marketing website (website/index.html)
+  const websiteDir = path.resolve(process.cwd(), "website");
+  if (fs.existsSync(websiteDir)) {
+    app.use("/website", express.static(websiteDir));
+    log("Marketing website served at /website");
+  }
+
+  // İndirme dosyaları — dist-electron klasöründen serve et
+  const downloadsDir = path.resolve(process.cwd(), "dist-electron");
+  if (fs.existsSync(downloadsDir)) {
+    app.use("/downloads", express.static(downloadsDir, {
+      setHeaders: (res, filePath) => {
+        if (filePath.endsWith(".exe")) {
+          res.setHeader("Content-Disposition", `attachment; filename="${path.basename(filePath)}"`);
+          res.setHeader("Content-Type", "application/octet-stream");
+        }
+      },
+    }));
+    log("Downloads served at /downloads");
+  }
 
   log("Expo routing: Checking expo-platform header on / and /manifest");
 }
@@ -228,7 +264,9 @@ function setupErrorHandler(app: express.Application) {
   setupErrorHandler(app);
 
   const port = parseInt(process.env.PORT || "5000", 10);
-  server.listen(port, "127.0.0.1", () => {
-    log(`express server serving on port ${port}`);
+  // 0.0.0.0: Docker container, Termux, LAN ve Tor hidden service erişimi için
+  const host = process.env.HOST || "0.0.0.0";
+  server.listen(port, host, () => {
+    log(`express server serving on ${host}:${port}`);
   });
 })();

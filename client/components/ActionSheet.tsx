@@ -52,8 +52,8 @@ export default function ActionSheet({
                   index === options.length - 1 && styles.lastOption,
                 ]}
                 onPress={() => {
-                  option.onPress();
                   onClose();
+                  setTimeout(() => option.onPress(), 300);
                 }}
               >
                 <ThemedText

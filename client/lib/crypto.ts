@@ -27,7 +27,7 @@ export function generateShortId(fingerprint: string): string {
   return `${part1}-${part2}`;
 }
 
-export async function generateKeyPair(): Promise<{
+export async function generateKeyPair(rsaBits: 2048 | 4096 = 2048): Promise<{
   publicKey: string;
   privateKey: string;
   fingerprint: string;
@@ -35,7 +35,7 @@ export async function generateKeyPair(): Promise<{
 }> {
   const { privateKey, publicKey } = await openpgp.generateKey({
     type: "rsa",
-    rsaBits: 2048,
+    rsaBits,
     userIDs: [{ name: "CipherNode User" }],
     format: "armored",
   });
@@ -56,6 +56,11 @@ export async function getOrCreateIdentity(): Promise<UserIdentity> {
     if (!parsed.publicKey || !parsed.privateKey) {
       await AsyncStorage.removeItem(IDENTITY_STORAGE_KEY);
       return getOrCreateIdentity();
+    }
+    // id alanı yoksa fingerprint'ten türet ve kaydet
+    if (!parsed.id && parsed.fingerprint) {
+      parsed.id = generateShortId(parsed.fingerprint);
+      await AsyncStorage.setItem(IDENTITY_STORAGE_KEY, JSON.stringify(parsed));
     }
     return parsed;
   }
@@ -101,15 +106,15 @@ export async function regenerateIdentity(): Promise<UserIdentity> {
 export async function encryptMessage(
   message: string,
   recipientPublicKey: string,
-  senderPrivateKey?: string
+  senderPrivateKey?: string,
 ): Promise<string> {
   if (!recipientPublicKey) {
     throw new Error("Encryption failed: Recipient public key is missing");
   }
-  
+
   try {
     const publicKey = await openpgp.readKey({ armoredKey: recipientPublicKey });
-    
+
     const encryptionOptions: {
       message: openpgp.Message<string>;
       encryptionKeys: openpgp.Key;
@@ -118,19 +123,21 @@ export async function encryptMessage(
       message: await openpgp.createMessage({ text: message }),
       encryptionKeys: publicKey,
     };
-    
+
     if (senderPrivateKey) {
-      const privateKey = await openpgp.readPrivateKey({ armoredKey: senderPrivateKey });
+      const privateKey = await openpgp.readPrivateKey({
+        armoredKey: senderPrivateKey,
+      });
       encryptionOptions.signingKeys = privateKey;
     }
-    
+
     const encrypted = await openpgp.encrypt(encryptionOptions);
 
     return encrypted as string;
   } catch (error) {
     // Düz metin ASLA döndürme — E2EE ihlali olur
     throw new Error(
-      `Encryption failed: ${error instanceof Error ? error.message : String(error)}`
+      `Encryption failed: ${error instanceof Error ? error.message : String(error)}`,
     );
   }
 }
@@ -138,15 +145,20 @@ export async function encryptMessage(
 export async function decryptMessage(
   encryptedMessage: string,
   privateKeyArmored: string,
-  senderPublicKey?: string
+  senderPublicKey?: string,
 ): Promise<{ content: string; verified: boolean }> {
-  if (!privateKeyArmored || !encryptedMessage.includes("-----BEGIN PGP MESSAGE-----")) {
+  if (
+    !privateKeyArmored ||
+    !encryptedMessage.includes("-----BEGIN PGP MESSAGE-----")
+  ) {
     return { content: encryptedMessage, verified: false };
   }
-  
+
   try {
-    const privateKey = await openpgp.readPrivateKey({ armoredKey: privateKeyArmored });
-    
+    const privateKey = await openpgp.readPrivateKey({
+      armoredKey: privateKeyArmored,
+    });
+
     const message = await openpgp.readMessage({
       armoredMessage: encryptedMessage,
     });
@@ -159,14 +171,15 @@ export async function decryptMessage(
       message,
       decryptionKeys: privateKey,
     };
-    
+
     if (senderPublicKey) {
       const publicKey = await openpgp.readKey({ armoredKey: senderPublicKey });
       decryptOptions.verificationKeys = publicKey;
     }
 
-    const { data: decrypted, signatures } = await openpgp.decrypt(decryptOptions);
-    
+    const { data: decrypted, signatures } =
+      await openpgp.decrypt(decryptOptions);
+
     let verified = false;
     if (signatures && signatures.length > 0 && senderPublicKey) {
       try {
@@ -193,10 +206,15 @@ export function parseContactId(input: string): string | null {
   return null;
 }
 
-export async function signMessage(message: string, privateKeyArmored: string): Promise<string> {
+export async function signMessage(
+  message: string,
+  privateKeyArmored: string,
+): Promise<string> {
   try {
-    const privateKey = await openpgp.readPrivateKey({ armoredKey: privateKeyArmored });
-    
+    const privateKey = await openpgp.readPrivateKey({
+      armoredKey: privateKeyArmored,
+    });
+
     const signed = await openpgp.sign({
       message: await openpgp.createCleartextMessage({ text: message }),
       signingKeys: privateKey,
@@ -211,17 +229,19 @@ export async function signMessage(message: string, privateKeyArmored: string): P
 
 export async function verifySignature(
   signedMessage: string,
-  publicKeyArmored: string
+  publicKeyArmored: string,
 ): Promise<{ verified: boolean; content: string }> {
   try {
     const publicKey = await openpgp.readKey({ armoredKey: publicKeyArmored });
-    
+
     const verified = await openpgp.verify({
-      message: await openpgp.readCleartextMessage({ cleartextMessage: signedMessage }),
+      message: await openpgp.readCleartextMessage({
+        cleartextMessage: signedMessage,
+      }),
       verificationKeys: publicKey,
     });
 
-    const { verified: verificationResult, data } = verified.signatures[0] 
+    const { verified: verificationResult, data } = verified.signatures[0]
       ? { verified: await verified.signatures[0].verified, data: verified.data }
       : { verified: false, data: signedMessage };
 
@@ -236,9 +256,33 @@ export async function exportPublicKey(identity: UserIdentity): Promise<string> {
   return identity.publicKey;
 }
 
+/**
+ * Kimliği JSON string olarak dışa aktar.
+ * Başka bir cihazda importIdentityFromBackup() ile içe aktarılabilir.
+ */
+export async function exportIdentityBackup(): Promise<string> {
+  const identity = await getOrCreateIdentity();
+  return JSON.stringify(identity);
+}
+
+/**
+ * JSON backup stringinden kimliği içe aktar.
+ * Mevcut kimliğin üzerine yazar.
+ */
+export async function importIdentityFromBackup(
+  backupJson: string,
+): Promise<UserIdentity> {
+  const parsed: UserIdentity = JSON.parse(backupJson);
+  if (!parsed.id || !parsed.publicKey || !parsed.privateKey) {
+    throw new Error("Invalid identity backup");
+  }
+  await AsyncStorage.setItem(IDENTITY_STORAGE_KEY, JSON.stringify(parsed));
+  return parsed;
+}
+
 export async function importContactFromPublicKey(
   publicKeyArmored: string,
-  displayName: string
+  displayName: string,
 ): Promise<Contact | null> {
   try {
     const publicKey = await openpgp.readKey({ armoredKey: publicKeyArmored });

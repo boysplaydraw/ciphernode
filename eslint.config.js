@@ -7,6 +7,12 @@ module.exports = defineConfig([
   expoConfig,
   eslintPluginPrettierRecommended,
   {
-    ignores: ["dist/*", "electron/dist/*"],
+    rules: {
+      // @/ ve @shared/ alias'ları build-time — ESLint statik analizde false positive verir
+      "import/no-unresolved": ["error", { ignore: ["^@/", "^@shared/"] }],
+    },
+  },
+  {
+    ignores: ["dist/*", "electron/dist/*", "server_dist/*", "node_modules/*"],
   },
 ]);

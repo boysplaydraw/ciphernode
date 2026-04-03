@@ -14,26 +14,42 @@ declare global {
       tor: {
         enable: () => Promise<{ success: boolean; error?: string }>;
         disable: () => Promise<{ success: boolean; error?: string }>;
-        getStatus: () => Promise<{ enabled: boolean; portOpen: boolean; port: number }>;
+        getStatus: () => Promise<{
+          enabled: boolean;
+          portOpen: boolean;
+          port: number;
+        }>;
         verify: () => Promise<{ isTor: boolean; ip: string; error?: string }>;
-        onStatus: (callback: (status: {
-          stage: string;
-          progress?: number;
-          message?: string;
-        }) => void) => () => void;
+        onStatus: (
+          callback: (status: {
+            stage: string;
+            progress?: number;
+            message?: string;
+          }) => void,
+        ) => () => void;
       };
       biometric: {
         isAvailable: () => Promise<boolean>;
-        authenticate: (reason: string) => Promise<{ success: boolean; error?: string }>;
+        authenticate: (
+          reason: string,
+        ) => Promise<{ success: boolean; error?: string }>;
       };
       onionShare: {
         create: (params: {
           files: Array<{ name: string; dataBase64: string; mimeType: string }>;
           maxDownloads?: number;
           expiresInMs?: number;
-        }) => Promise<{ success: boolean; onionAddress?: string; sessionId?: string; token?: string; error?: string }>;
+        }) => Promise<{
+          success: boolean;
+          onionAddress?: string;
+          sessionId?: string;
+          token?: string;
+          error?: string;
+        }>;
         close: (sessionId: string) => Promise<{ success: boolean }>;
-        list: () => Promise<Array<{ sessionId: string; onionAddress: string; expiresAt: number }>>;
+        list: () => Promise<
+          Array<{ sessionId: string; onionAddress: string; expiresAt: number }>
+        >;
       };
       platform: string;
       isElectron: boolean;
@@ -50,36 +66,58 @@ declare global {
 
 /** Bu uygulama Electron'da mı çalışıyor? */
 export function isElectron(): boolean {
-  return Platform.OS === "web" && typeof window !== "undefined" && !!window.electronAPI?.isElectron;
+  return (
+    Platform.OS === "web" &&
+    typeof window !== "undefined" &&
+    !!window.electronAPI?.isElectron
+  );
 }
 
 /** Electron ortamında Tor'u etkinleştir — session.setProxy() ile TÜM trafik Tor'dan geçer */
-export async function electronEnableTor(): Promise<{ success: boolean; error?: string }> {
+export async function electronEnableTor(): Promise<{
+  success: boolean;
+  error?: string;
+}> {
   if (!isElectron()) return { success: false, error: "Not in Electron" };
   return window.electronAPI!.tor.enable();
 }
 
 /** Tor'u devre dışı bırak */
-export async function electronDisableTor(): Promise<{ success: boolean; error?: string }> {
+export async function electronDisableTor(): Promise<{
+  success: boolean;
+  error?: string;
+}> {
   if (!isElectron()) return { success: false, error: "Not in Electron" };
   return window.electronAPI!.tor.disable();
 }
 
 /** Tor durum bilgisini al */
-export async function electronGetTorStatus(): Promise<{ enabled: boolean; portOpen: boolean; port: number } | null> {
+export async function electronGetTorStatus(): Promise<{
+  enabled: boolean;
+  portOpen: boolean;
+  port: number;
+} | null> {
   if (!isElectron()) return null;
   return window.electronAPI!.tor.getStatus();
 }
 
 /** check.torproject.org ile Tor bağlantısını doğrula */
-export async function electronVerifyTor(): Promise<{ isTor: boolean; ip: string; error?: string } | null> {
+export async function electronVerifyTor(): Promise<{
+  isTor: boolean;
+  ip: string;
+  error?: string;
+} | null> {
   if (!isElectron()) return null;
   return window.electronAPI!.tor.verify();
 }
 
 /** Tor durum güncellemelerini dinle */
 export function electronOnTorStatus(
-  callback: (status: { stage: string; progress?: number; message?: string }) => void
+  callback: (status: {
+    stage: string;
+    progress?: number;
+    message?: string;
+  }) => void,
 ): (() => void) | null {
   if (!isElectron()) return null;
   return window.electronAPI!.tor.onStatus(callback);
@@ -93,7 +131,7 @@ export async function electronBiometricIsAvailable(): Promise<boolean> {
 
 /** Electron'da biyometrik doğrulama iste (Touch ID / Windows Hello) */
 export async function electronBiometricAuthenticate(
-  reason: string
+  reason: string,
 ): Promise<{ success: boolean; error?: string }> {
   if (!isElectron()) return { success: false, error: "Not in Electron" };
   return window.electronAPI!.biometric.authenticate(reason);

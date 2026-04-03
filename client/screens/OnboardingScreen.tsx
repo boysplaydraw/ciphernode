@@ -13,6 +13,8 @@ import {
   ScrollView,
   Platform,
   ActivityIndicator,
+  Alert,
+  Linking,
 } from "react-native";
 import Animated, {
   useSharedValue,
@@ -25,10 +27,7 @@ import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { ThemedText } from "@/components/ThemedText";
 import { Colors, Spacing, BorderRadius, Fonts } from "@/constants/theme";
-import {
-  setOnboardingComplete,
-  updateTorSettings,
-} from "@/lib/storage";
+import { setOnboardingComplete, updateTorSettings } from "@/lib/storage";
 import { getOrCreateIdentity, updateDisplayName } from "@/lib/crypto";
 import { useLanguage } from "@/constants/language";
 
@@ -38,7 +37,9 @@ interface OnboardingScreenProps {
   onComplete: () => void;
 }
 
-export default function OnboardingScreen({ onComplete }: OnboardingScreenProps) {
+export default function OnboardingScreen({
+  onComplete,
+}: OnboardingScreenProps) {
   const insets = useSafeAreaInsets();
   const { language } = useLanguage();
   const isTr = language === "tr";
@@ -49,7 +50,12 @@ export default function OnboardingScreen({ onComplete }: OnboardingScreenProps) 
   const [typewriterDone, setTypewriterDone] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [displayNameInput, setDisplayNameInput] = useState("");
-  const [connectionMode, setConnectionMode] = useState<ConnectionMode>("clearnet");
+  const [connectionMode, setConnectionMode] =
+    useState<ConnectionMode>("clearnet");
+  const [checkingTor, setCheckingTor] = useState(false);
+  const [torCheckResult, setTorCheckResult] = useState<
+    "idle" | "checking" | "ok" | "fail"
+  >("idle");
 
   // 3 adet progress dot için ayrı shared values (hooks kuralı: koşullu çağrılmaz)
   const dot0 = useSharedValue(true);
@@ -71,12 +77,15 @@ export default function OnboardingScreen({ onComplete }: OnboardingScreenProps) 
 
   const dotStyles = [dot0Style, dot1Style, dot2Style];
 
-  const goToStep = useCallback((s: number) => {
-    dot0.value = s === 0;
-    dot1.value = s === 1;
-    dot2.value = s === 2;
-    setStep(s);
-  }, [dot0, dot1, dot2]);
+  const goToStep = useCallback(
+    (s: number) => {
+      dot0.value = s === 0;
+      dot1.value = s === 1;
+      dot2.value = s === 2;
+      setStep(s);
+    },
+    [dot0, dot1, dot2],
+  );
 
   // Adım 1'e ilk geçişte kimlik üret
   const generateIdentity = useCallback(async () => {
@@ -114,7 +123,8 @@ export default function OnboardingScreen({ onComplete }: OnboardingScreenProps) 
   }, [step, userId, generateIdentity]);
 
   const haptic = () => {
-    if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    if (Platform.OS !== "web")
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
   };
 
   const handleNext = () => {
@@ -127,16 +137,117 @@ export default function OnboardingScreen({ onComplete }: OnboardingScreenProps) 
     goToStep(step - 1);
   };
 
+  const doFinish = useCallback(
+    async (withTor: boolean) => {
+      if (withTor) {
+        await updateTorSettings({ enabled: true, connectionStatus: "connecting" });
+      }
+      await setOnboardingComplete();
+      onComplete();
+    },
+    [onComplete],
+  );
+
+  /** Tor bağlantısını check.torproject.org ile doğrula, sonra devam et */
+  const checkTorAndFinish = useCallback(async () => {
+    setCheckingTor(true);
+    setTorCheckResult("checking");
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000);
+      const res = await fetch("https://check.torproject.org/api/ip", {
+        signal: controller.signal,
+      });
+      clearTimeout(timeoutId);
+      const data = await res.json();
+
+      if (data.IsTor === true) {
+        setTorCheckResult("ok");
+        await updateTorSettings({ enabled: true, connectionStatus: "connected" });
+        await setOnboardingComplete();
+        onComplete();
+      } else {
+        setTorCheckResult("fail");
+        setCheckingTor(false);
+        Alert.alert(
+          isTr ? "Tor Tespit Edilmedi" : "Tor Not Detected",
+          isTr
+            ? `Bağlantı Clearnet üzerinden gidiyor.\nMevcut IP: ${data.IP}\n\nOrbot'ta "Tüm Uygulamalar için VPN" modunun açık olduğundan emin olun.`
+            : `Traffic is not going through Tor.\nCurrent IP: ${data.IP}\n\nMake sure Orbot has "VPN for All Apps" enabled.`,
+          [
+            {
+              text: isTr ? "Tekrar Dene" : "Retry",
+              onPress: checkTorAndFinish,
+            },
+            {
+              text: isTr ? "Clearnet ile Devam" : "Continue without Tor",
+              style: "cancel",
+              onPress: () => doFinish(false),
+            },
+          ],
+        );
+      }
+    } catch {
+      setTorCheckResult("fail");
+      setCheckingTor(false);
+      Alert.alert(
+        isTr ? "Bağlantı Hatası" : "Connection Error",
+        isTr
+          ? "Tor durumu kontrol edilemedi. İnternet bağlantınızı ve Orbot'un çalıştığını kontrol edin."
+          : "Could not verify Tor status. Check your internet connection and that Orbot is running.",
+        [
+          { text: isTr ? "Tekrar Dene" : "Retry", onPress: checkTorAndFinish },
+          {
+            text: isTr ? "Clearnet ile Devam" : "Continue without Tor",
+            style: "cancel",
+            onPress: () => doFinish(false),
+          },
+        ],
+      );
+    }
+  }, [isTr, doFinish, onComplete]);
+
   const handleFinish = async () => {
     haptic();
     if (displayNameInput.trim()) {
       await updateDisplayName(displayNameInput.trim());
     }
-    if (connectionMode === "tor") {
-      await updateTorSettings({ enabled: true, connectionStatus: "connecting" });
+
+    // Android/iOS'ta Tor seçildiyse → Orbot kılavuzu göster
+    if (connectionMode === "tor" && Platform.OS !== "web") {
+      Alert.alert(
+        isTr ? "Tor Modu — Orbot Gerekli" : "Tor Mode — Orbot Required",
+        isTr
+          ? "Android'de Tor trafiği için Orbot uygulaması VPN modunda çalışmalıdır.\n\n1. Play Store'dan Orbot'u yükleyin\n2. Orbot'ta \"Tüm Uygulamalar için VPN\" modunu açın\n3. Orbot bağlandıktan sonra \"Orbot Hazır, Bağlantıyı Test Et\" butonuna basın."
+          : "Tor traffic on Android requires the Orbot app running in VPN mode.\n\n1. Install Orbot from Play Store\n2. Enable \"VPN for All Apps\" in Orbot\n3. Once connected, tap \"Test Tor Connection\".",
+        [
+          {
+            text: isTr ? "Clearnet ile Devam" : "Continue with Clearnet",
+            style: "cancel",
+            onPress: () => doFinish(false),
+          },
+          {
+            text: isTr ? "Orbot'u İndir" : "Get Orbot",
+            onPress: () => {
+              Linking.openURL(
+                "market://details?id=org.torproject.android",
+              ).catch(() =>
+                Linking.openURL(
+                  "https://play.google.com/store/apps/details?id=org.torproject.android",
+                ),
+              );
+            },
+          },
+          {
+            text: isTr ? "Orbot Hazır, Bağlantıyı Test Et" : "Test Tor Connection",
+            onPress: () => checkTorAndFinish(),
+          },
+        ],
+      );
+      return;
     }
-    await setOnboardingComplete();
-    onComplete();
+
+    await doFinish(connectionMode === "tor");
   };
 
   const modes: {
@@ -176,7 +287,11 @@ export default function OnboardingScreen({ onComplete }: OnboardingScreenProps) 
         {dotStyles.map((style, i) => (
           <Animated.View
             key={i}
-            style={[styles.dot, { backgroundColor: Colors.dark.primary }, style]}
+            style={[
+              styles.dot,
+              { backgroundColor: Colors.dark.primary },
+              style,
+            ]}
           />
         ))}
       </View>
@@ -233,7 +348,11 @@ export default function OnboardingScreen({ onComplete }: OnboardingScreenProps) 
             <ThemedText style={styles.btnText}>
               {isTr ? "Kimlik Oluştur" : "Create Identity"}
             </ThemedText>
-            <Feather name="chevron-right" size={18} color={Colors.dark.buttonText} />
+            <Feather
+              name="chevron-right"
+              size={18}
+              color={Colors.dark.buttonText}
+            />
           </Pressable>
         </ScrollView>
       )}
@@ -279,13 +398,18 @@ export default function OnboardingScreen({ onComplete }: OnboardingScreenProps) 
           {/* Takma ad */}
           <View style={styles.inputWrap}>
             <ThemedText style={styles.inputLabel}>
-              {isTr ? "TAKMa AD (OPSİYONEL)" : "DISPLAY NAME (OPTIONAL)"}
+              {isTr ? "TAKMA AD (OPSİYONEL)" : "DISPLAY NAME (OPTIONAL)"}
             </ThemedText>
             <TextInput
               style={styles.input}
               value={displayNameInput}
               onChangeText={(t) =>
-                setDisplayNameInput(t.toLowerCase().replace(/[^a-z0-9_]/g, "").slice(0, 24))
+                setDisplayNameInput(
+                  t
+                    .toLowerCase()
+                    .replace(/[^a-z0-9_]/g, "")
+                    .slice(0, 24),
+                )
               }
               placeholder={isTr ? "örn: neon_ghost" : "e.g. neon_ghost"}
               placeholderTextColor={Colors.dark.textDisabled}
@@ -293,7 +417,9 @@ export default function OnboardingScreen({ onComplete }: OnboardingScreenProps) 
               autoCorrect={false}
             />
             <ThemedText style={styles.inputHint}>
-              {isTr ? "Harf, rakam ve _ kullanabilirsin (maks. 24 karakter)" : "Letters, numbers and _ (max 24 chars)"}
+              {isTr
+                ? "Harf, rakam ve _ kullanabilirsin (maks. 24 karakter)"
+                : "Letters, numbers and _ (max 24 chars)"}
             </ThemedText>
           </View>
 
@@ -315,7 +441,11 @@ export default function OnboardingScreen({ onComplete }: OnboardingScreenProps) 
               <ThemedText style={styles.btnText}>
                 {isTr ? "Devam Et" : "Continue"}
               </ThemedText>
-              <Feather name="chevron-right" size={16} color={Colors.dark.buttonText} />
+              <Feather
+                name="chevron-right"
+                size={16}
+                color={Colors.dark.buttonText}
+              />
             </Pressable>
           </View>
         </ScrollView>
@@ -331,7 +461,9 @@ export default function OnboardingScreen({ onComplete }: OnboardingScreenProps) 
             {isTr ? "Bağlantı Modu" : "Connection Mode"}
           </ThemedText>
           <ThemedText style={styles.stepDesc}>
-            {isTr ? "Nasıl bağlanmak istediğini seç." : "Choose how you want to connect."}
+            {isTr
+              ? "Nasıl bağlanmak istediğini seç."
+              : "Choose how you want to connect."}
           </ThemedText>
 
           <View style={styles.modeList}>
@@ -395,30 +527,83 @@ export default function OnboardingScreen({ onComplete }: OnboardingScreenProps) 
           </View>
 
           {connectionMode === "tor" && (
-            <View style={styles.torNote}>
-              <Feather name="info" size={12} color={Colors.dark.textSecondary} />
-              <ThemedText style={styles.torNoteText}>
-                {isTr
-                  ? "Tor kullanmak için Android'de Orbot uygulamasının çalışıyor olması gerekir."
-                  : "Orbot app must be running on Android to use Tor."}
+            <View
+              style={[
+                styles.torNote,
+                torCheckResult === "ok" && styles.torNoteSuccess,
+                torCheckResult === "fail" && styles.torNoteFail,
+              ]}
+            >
+              {checkingTor ? (
+                <ActivityIndicator size="small" color={Colors.dark.primary} />
+              ) : (
+                <Feather
+                  name={
+                    torCheckResult === "ok"
+                      ? "check-circle"
+                      : torCheckResult === "fail"
+                        ? "alert-circle"
+                        : "info"
+                  }
+                  size={14}
+                  color={
+                    torCheckResult === "ok"
+                      ? Colors.dark.success
+                      : torCheckResult === "fail"
+                        ? Colors.dark.warning
+                        : Colors.dark.textSecondary
+                  }
+                />
+              )}
+              <ThemedText
+                style={[
+                  styles.torNoteText,
+                  torCheckResult === "ok" && { color: Colors.dark.success },
+                  torCheckResult === "fail" && { color: Colors.dark.warning },
+                ]}
+              >
+                {checkingTor
+                  ? (isTr ? "Tor bağlantısı kontrol ediliyor..." : "Checking Tor connection...")
+                  : torCheckResult === "ok"
+                    ? (isTr ? "✓ Tor bağlantısı doğrulandı" : "✓ Tor connection verified")
+                    : torCheckResult === "fail"
+                      ? (isTr ? "Tor tespit edilemedi. Orbot aktif mi?" : "Tor not detected. Is Orbot running?")
+                      : (isTr
+                          ? "Orbot uygulaması VPN modunda çalışmalıdır."
+                          : "Orbot app must be running in VPN mode.")}
               </ThemedText>
             </View>
           )}
 
           <View style={styles.btnRow}>
-            <Pressable onPress={handleBack} style={styles.btnSecondary}>
+            <Pressable
+              onPress={handleBack}
+              disabled={checkingTor}
+              style={[styles.btnSecondary, checkingTor && { opacity: 0.4 }]}
+            >
               <ThemedText style={styles.btnSecondaryText}>
                 {isTr ? "Geri" : "Back"}
               </ThemedText>
             </Pressable>
             <Pressable
               onPress={handleFinish}
-              style={({ pressed }) => [styles.btnFlex, pressed && styles.btnPressed]}
+              disabled={checkingTor}
+              style={({ pressed }) => [
+                styles.btnFlex,
+                checkingTor && styles.btnDisabled,
+                pressed && !checkingTor && styles.btnPressed,
+              ]}
             >
-              <ThemedText style={styles.btnText}>
-                {isTr ? "CipherNode'a Gir" : "Enter CipherNode"}
-              </ThemedText>
-              <Feather name="check" size={16} color={Colors.dark.buttonText} />
+              {checkingTor ? (
+                <ActivityIndicator size="small" color={Colors.dark.buttonText} />
+              ) : (
+                <>
+                  <ThemedText style={styles.btnText}>
+                    {isTr ? "CipherNode'a Gir" : "Enter CipherNode"}
+                  </ThemedText>
+                  <Feather name="check" size={16} color={Colors.dark.buttonText} />
+                </>
+              )}
             </Pressable>
           </View>
         </ScrollView>
@@ -612,7 +797,6 @@ const styles = StyleSheet.create({
   },
   // Connection mode
   modeList: {
-    gap: Spacing.md,
     marginBottom: Spacing.xl,
   },
   modeCard: {
@@ -623,7 +807,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: Colors.dark.border,
     backgroundColor: Colors.dark.backgroundSecondary,
-    gap: Spacing.md,
+    marginBottom: Spacing.md,
   },
   modeCardSelected: {
     borderColor: Colors.dark.primary,
@@ -637,6 +821,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     flexShrink: 0,
+    marginRight: Spacing.md,
   },
   modeIconSelected: {
     backgroundColor: Colors.dark.primary + "22",
@@ -645,9 +830,9 @@ const styles = StyleSheet.create({
   modeTitleRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: Spacing.sm,
     marginBottom: 2,
     flexWrap: "wrap",
+    columnGap: Spacing.sm,
   },
   modeTitle: {
     fontSize: 15,
@@ -687,6 +872,16 @@ const styles = StyleSheet.create({
     borderRadius: BorderRadius.xs,
     padding: Spacing.md,
     marginBottom: Spacing.xl,
+    borderWidth: 1,
+    borderColor: Colors.dark.border,
+  },
+  torNoteSuccess: {
+    borderColor: Colors.dark.success + "66",
+    backgroundColor: Colors.dark.success + "11",
+  },
+  torNoteFail: {
+    borderColor: Colors.dark.warning + "66",
+    backgroundColor: Colors.dark.warning + "11",
   },
   torNoteText: {
     flex: 1,

@@ -7,7 +7,11 @@ import {
   Alert,
   Platform,
 } from "react-native";
-import { useNavigation, useRoute, useFocusEffect } from "@react-navigation/native";
+import {
+  useNavigation,
+  useRoute,
+  useFocusEffect,
+} from "@react-navigation/native";
 import { useHeaderHeight } from "@react-navigation/elements";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
@@ -17,11 +21,20 @@ import * as Haptics from "expo-haptics";
 import { ThemedText } from "@/components/ThemedText";
 import { ThemedView } from "@/components/ThemedView";
 import { Colors, Spacing, BorderRadius, Fonts } from "@/constants/theme";
-import { getGroup, deleteGroup, archiveGroup, removeGroupMember, type Group } from "@/lib/storage";
+import {
+  getGroup,
+  deleteGroup,
+  archiveGroup,
+  removeGroupMember,
+  type Group,
+} from "@/lib/storage";
 import { useIdentity } from "@/hooks/useIdentity";
 import type { ChatsStackParamList } from "@/navigation/ChatsStackNavigator";
 
-type NavigationProp = NativeStackNavigationProp<ChatsStackParamList, "GroupInfo">;
+type NavigationProp = NativeStackNavigationProp<
+  ChatsStackParamList,
+  "GroupInfo"
+>;
 type ScreenRouteProp = RouteProp<ChatsStackParamList, "GroupInfo">;
 
 export default function GroupInfoScreen() {
@@ -42,10 +55,11 @@ export default function GroupInfoScreen() {
   useFocusEffect(
     useCallback(() => {
       loadGroup();
-    }, [loadGroup])
+    }, [loadGroup]),
   );
 
-  const isAdmin = group?.members.find((m) => m.id === identity?.id)?.role === "admin";
+  const isAdmin =
+    group?.members.find((m) => m.id === identity?.id)?.role === "admin";
 
   const handleArchive = async () => {
     if (Platform.OS !== "web") {
@@ -56,23 +70,19 @@ export default function GroupInfoScreen() {
   };
 
   const handleLeaveGroup = () => {
-    Alert.alert(
-      "Leave Group",
-      "Are you sure you want to leave this group?",
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Leave",
-          style: "destructive",
-          onPress: async () => {
-            if (identity) {
-              await removeGroupMember(groupId, identity.id);
-            }
-            navigation.popToTop();
-          },
+    Alert.alert("Leave Group", "Are you sure you want to leave this group?", [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Leave",
+        style: "destructive",
+        onPress: async () => {
+          if (identity) {
+            await removeGroupMember(groupId, identity.id);
+          }
+          navigation.popToTop();
         },
-      ]
-    );
+      },
+    ]);
   };
 
   const handleDeleteGroup = () => {
@@ -89,7 +99,7 @@ export default function GroupInfoScreen() {
             navigation.popToTop();
           },
         },
-      ]
+      ],
     );
   };
 
@@ -118,7 +128,9 @@ export default function GroupInfoScreen() {
           </View>
           <ThemedText style={styles.groupName}>{group.name}</ThemedText>
           {group.description ? (
-            <ThemedText style={styles.description}>{group.description}</ThemedText>
+            <ThemedText style={styles.description}>
+              {group.description}
+            </ThemedText>
           ) : null}
         </View>
 
@@ -130,7 +142,11 @@ export default function GroupInfoScreen() {
             {group.members.map((member) => (
               <View key={member.id} style={styles.memberRow}>
                 <View style={styles.memberAvatar}>
-                  <Feather name="user" size={18} color={Colors.dark.secondary} />
+                  <Feather
+                    name="user"
+                    size={18}
+                    color={Colors.dark.secondary}
+                  />
                 </View>
                 <View style={styles.memberInfo}>
                   <ThemedText style={styles.memberName}>
@@ -184,7 +200,9 @@ export default function GroupInfoScreen() {
             ]}
           >
             <Feather name="archive" size={18} color={Colors.dark.warning} />
-            <ThemedText style={styles.actionButtonText}>Archive Group</ThemedText>
+            <ThemedText style={styles.actionButtonText}>
+              Archive Group
+            </ThemedText>
           </Pressable>
 
           <Pressable
@@ -196,7 +214,9 @@ export default function GroupInfoScreen() {
             ]}
           >
             <Feather name="log-out" size={18} color={Colors.dark.error} />
-            <ThemedText style={styles.actionButtonTextDanger}>Leave Group</ThemedText>
+            <ThemedText style={styles.actionButtonTextDanger}>
+              Leave Group
+            </ThemedText>
           </Pressable>
 
           {isAdmin ? (
@@ -209,7 +229,9 @@ export default function GroupInfoScreen() {
               ]}
             >
               <Feather name="trash-2" size={18} color={Colors.dark.error} />
-              <ThemedText style={styles.actionButtonTextDanger}>Delete Group</ThemedText>
+              <ThemedText style={styles.actionButtonTextDanger}>
+                Delete Group
+              </ThemedText>
             </Pressable>
           ) : null}
         </View>

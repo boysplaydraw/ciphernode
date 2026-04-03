@@ -11,10 +11,13 @@ import {
   Linking,
 } from "react-native";
 import * as DocumentPicker from "expo-document-picker";
-import { useNavigation, useRoute, useFocusEffect } from "@react-navigation/native";
+import {
+  useNavigation,
+  useRoute,
+  useFocusEffect,
+} from "@react-navigation/native";
 import { useHeaderHeight } from "@react-navigation/elements";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { HeaderButton } from "@react-navigation/elements";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import type { RouteProp } from "@react-navigation/native";
 import { Feather } from "@expo/vector-icons";
@@ -26,6 +29,7 @@ import {
   getChat,
   getContact,
   saveMessage,
+  updateMessageStatus,
   markChatAsRead,
   generateMessageId,
   getSettings,
@@ -38,15 +42,35 @@ import ActionSheet, { type ActionSheetOption } from "@/components/ActionSheet";
 import * as Clipboard from "expo-clipboard";
 import * as Sharing from "expo-sharing";
 import * as FileSystem from "expo-file-system/legacy";
-import { encryptMessage, decryptMessage, type Contact, type UserIdentity } from "@/lib/crypto";
-import { sendMessage as socketSendMessage, onMessage, sendFileShare, onFileShare, type IncomingFileNotification } from "@/lib/socket";
-import { shareFile, downloadAndDecryptFile, formatFileSize, getFileIcon, scrubFileMetadata } from "@/lib/file-share";
+import {
+  encryptMessage,
+  decryptMessage,
+  type Contact,
+  type UserIdentity,
+} from "@/lib/crypto";
+import {
+  sendMessage as socketSendMessage,
+  onMessage,
+  sendFileShare,
+  onFileShare,
+  type IncomingFileNotification,
+} from "@/lib/socket";
+import {
+  shareFile,
+  downloadAndDecryptFile,
+  formatFileSize,
+  getFileIcon,
+  scrubFileMetadata,
+} from "@/lib/file-share";
 import { getApiUrl } from "@/lib/query-client";
 import { getPrivacySettings } from "@/lib/storage";
 import type { ChatsStackParamList } from "@/navigation/ChatsStackNavigator";
 import { useIdentity } from "@/hooks/useIdentity";
 
-type NavigationProp = NativeStackNavigationProp<ChatsStackParamList, "ChatThread">;
+type NavigationProp = NativeStackNavigationProp<
+  ChatsStackParamList,
+  "ChatThread"
+>;
 type ScreenRouteProp = RouteProp<ChatsStackParamList, "ChatThread">;
 
 interface MessageBubbleProps {
@@ -71,7 +95,14 @@ function formatRemainingTime(expiresAt: number, now: number): string {
   return `${days}d`;
 }
 
-function MessageBubble({ message, isMine, currentTime, identity, contact, onLongPress }: MessageBubbleProps) {
+function MessageBubble({
+  message,
+  isMine,
+  currentTime,
+  identity,
+  contact,
+  onLongPress,
+}: MessageBubbleProps) {
   const [displayContent, setDisplayContent] = useState(message.content);
   const [verified, setVerified] = useState<boolean | null>(null);
 
@@ -96,11 +127,17 @@ function MessageBubble({ message, isMine, currentTime, identity, contact, onLong
       }
 
       const encryptedPayload = message.encrypted || message.content;
-      const isEncrypted = encryptedPayload.includes("-----BEGIN PGP MESSAGE-----");
-      
+      const isEncrypted = encryptedPayload.includes(
+        "-----BEGIN PGP MESSAGE-----",
+      );
+
       if (isEncrypted) {
         const senderPublicKey = contact?.publicKey;
-        const result = await decryptMessage(encryptedPayload, identity.privateKey, senderPublicKey);
+        const result = await decryptMessage(
+          encryptedPayload,
+          identity.privateKey,
+          senderPublicKey,
+        );
         setDisplayContent(result.content);
         setVerified(result.verified);
       } else {
@@ -147,7 +184,9 @@ function MessageBubble({ message, isMine, currentTime, identity, contact, onLong
             <ThemedText
               style={[
                 styles.timerText,
-                { color: isMine ? Colors.dark.buttonText : Colors.dark.warning },
+                {
+                  color: isMine ? Colors.dark.buttonText : Colors.dark.warning,
+                },
               ]}
             >
               {formatRemainingTime(message.expiresAt, currentTime)}
@@ -195,9 +234,17 @@ export default function ChatThreadScreen() {
   const [currentTime, setCurrentTime] = useState(Date.now());
   const flatListRef = useRef<FlatList>(null);
   const [actionSheetVisible, setActionSheetVisible] = useState(false);
-  const [selectedMessage, setSelectedMessage] = useState<{ message: Message; displayContent: string } | null>(null);
+  const [selectedMessage, setSelectedMessage] = useState<{
+    message: Message;
+    displayContent: string;
+  } | null>(null);
   const [sendingFile, setSendingFile] = useState(false);
-  const [incomingFiles, setIncomingFiles] = useState<IncomingFileNotification[]>([]);
+  const [incomingFiles, setIncomingFiles] = useState<
+    IncomingFileNotification[]
+  >([]);
+  const [sentFiles, setSentFiles] = useState<
+    Array<{ fileId: string; fileName: string; fileSize: number }>
+  >([]);
   const [downloadingFile, setDownloadingFile] = useState<string | null>(null);
 
   useEffect(() => {
@@ -212,7 +259,7 @@ export default function ChatThreadScreen() {
       getContact(contactId),
       getSettings(),
     ]);
-    const clonedMessages = chatDataRaw?.messages.map(m => ({ ...m })) || [];
+    const clonedMessages = chatDataRaw?.messages.map((m) => ({ ...m })) || [];
     setMessages(clonedMessages);
     setContact(contactData);
     setMessageTimer(settings.defaultMessageTimer);
@@ -226,7 +273,7 @@ export default function ChatThreadScreen() {
       await cleanupExpiredMessagesForChat(contactId);
       const chatData = await getChat(contactId);
       if (chatData) {
-        const clonedMessages = chatData.messages.map(m => ({ ...m }));
+        const clonedMessages = chatData.messages.map((m) => ({ ...m }));
         setMessages(clonedMessages);
       }
     }, 5000);
@@ -236,7 +283,7 @@ export default function ChatThreadScreen() {
   useFocusEffect(
     useCallback(() => {
       loadData();
-    }, [loadData])
+    }, [loadData]),
   );
 
   React.useLayoutEffect(() => {
@@ -244,39 +291,33 @@ export default function ChatThreadScreen() {
     navigation.setOptions({
       headerTitle: displayName,
       headerRight: () => (
-        <HeaderButton
+        <Pressable
           onPress={() => navigation.navigate("ContactInfo", { contactId })}
+          style={{ paddingHorizontal: 12, paddingVertical: 8 }}
+          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
         >
           <Feather name="info" size={22} color={Colors.dark.primary} />
-        </HeaderButton>
+        </Pressable>
       ),
     });
   }, [navigation, contact, contactId]);
 
   useEffect(() => {
-    const unsubscribe = onMessage(async (msg) => {
-      if (msg.from === contactId && identity) {
-        const receivedMessage: Message = {
-          id: msg.id || generateMessageId(),
-          content: msg.encrypted,
-          encrypted: msg.encrypted,
-          senderId: msg.from,
-          recipientId: identity.id,
-          timestamp: msg.timestamp,
-          status: "received",
-        };
-        await saveMessage(contactId, receivedMessage);
+    // Mesaj zaten App.tsx global handler tarafından kaydedildi,
+    // sadece bu ekranla ilgili mesajlarda UI'yi güncelle
+    const unsubscribe = onMessage((msg) => {
+      if (msg.from === contactId) {
         loadData();
       }
     });
     return unsubscribe;
-  }, [contactId, identity, loadData]);
+  }, [contactId, loadData]);
 
   // Gelen dosya bildirimlerini dinle
   useEffect(() => {
     const unsubscribe = onFileShare((notification) => {
       if (notification.from === contactId) {
-        setIncomingFiles(prev => [...prev, notification]);
+        setIncomingFiles((prev) => [...prev, notification]);
       }
     });
     return unsubscribe;
@@ -285,11 +326,9 @@ export default function ChatThreadScreen() {
   // Dosya gönder
   const handleSendFile = useCallback(async () => {
     if (!contact?.publicKey) {
-      Alert.alert(
-        "Hata",
-        "Bu kişinin açık anahtarı yok. Dosya şifrelenemez.",
-        [{ text: "Tamam" }]
-      );
+      Alert.alert("Hata", "Bu kişinin açık anahtarı yok. Dosya şifrelenemez.", [
+        { text: "Tamam" },
+      ]);
       return;
     }
 
@@ -304,94 +343,116 @@ export default function ChatThreadScreen() {
 
       setSendingFile(true);
 
-      // Dosyayı şifrele ve yükle
-      const response = await fetch(asset.uri);
-      const blob = await response.blob();
-      const file = new File([blob], asset.name, { type: asset.mimeType || "application/octet-stream" });
-
       // autoMetadataScrubbing ayarını oku
       const privacySettings = await getPrivacySettings();
 
-      const { fileId, encryptedKey } = await shareFile({
-        file,
-        recipientPublicKey: contact.publicKey,
-        senderPrivateKey: identity?.privateKey,
-        scrubMetadata: privacySettings.autoMetadataScrubbing,
-        onProgress: (p) => {
-          if (p.stage === "error") {
-            Alert.alert("Yükleme Hatası", p.message);
-          }
-        },
-      });
+      let fileId: string;
+      let encryptedKey: string;
+
+      if (Platform.OS === "web") {
+        // Web: fetch ile blob al, File nesnesi oluştur
+        const response = await fetch(asset.uri);
+        const fileBlob = await response.blob();
+        const file = new File([fileBlob], asset.name, {
+          type: asset.mimeType || "application/octet-stream",
+        });
+        ({ fileId, encryptedKey } = await shareFile({
+          file,
+          recipientPublicKey: contact.publicKey,
+          senderPrivateKey: identity?.privateKey,
+          scrubMetadata: privacySettings.autoMetadataScrubbing,
+          onProgress: (p) => {
+            if (p.stage === "error") Alert.alert("Yükleme Hatası", p.message);
+          },
+        }));
+      } else {
+        // Native (Android/iOS): base64 olarak oku, Blob oluşturmadan gönder
+        const base64 = await FileSystem.readAsStringAsync(asset.uri, {
+          encoding: FileSystem.EncodingType.Base64,
+        });
+        ({ fileId, encryptedKey } = await shareFile({
+          fileBase64: base64,
+          fileName: asset.name,
+          fileMimeType: asset.mimeType || "application/octet-stream",
+          fileSize: asset.size || 0,
+          recipientPublicKey: contact.publicKey,
+          senderPrivateKey: identity?.privateKey,
+          onProgress: (p) => {
+            if (p.stage === "error") Alert.alert("Yükleme Hatası", p.message);
+          },
+        }));
+      }
 
       // Alıcıya socket bildirimi gönder
       sendFileShare(contactId, {
         fileId,
         fileName: asset.name,
-        fileSize: asset.size || blob.size,
+        fileSize: asset.size || 0,
         mimeType: asset.mimeType || "application/octet-stream",
         encryptedKey,
       });
 
-      Alert.alert(
-        "Dosya Gönderildi",
-        `"${asset.name}" şifreli olarak gönderildi.`,
-        [{ text: "Tamam" }]
-      );
+      setSentFiles((prev) => [
+        ...prev,
+        { fileId, fileName: asset.name, fileSize: asset.size || 0 },
+      ]);
     } catch (err) {
-      Alert.alert("Hata", err instanceof Error ? err.message : "Dosya gönderilemedi");
+      Alert.alert(
+        "Hata",
+        err instanceof Error ? err.message : "Dosya gönderilemedi",
+      );
     } finally {
       setSendingFile(false);
     }
   }, [contact, identity, contactId]);
 
   // Dosya indir ve aç
-  const handleDownloadFile = useCallback(async (notification: IncomingFileNotification) => {
-    if (!identity?.privateKey) {
-      Alert.alert("Hata", "Özel anahtar bulunamadı.");
-      return;
-    }
-    setDownloadingFile(notification.fileId);
-    try {
-      const { data, name, mimeType } = await downloadAndDecryptFile({
-        fileId: notification.fileId,
-        encryptedKey: notification.encryptedKey,
-        recipientPrivateKey: identity.privateKey,
-      });
-
-      // Dosyayı tarayıcıda / cihazda aç
-      if (Platform.OS === "web") {
-        const url = URL.createObjectURL(data);
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = name;
-        a.click();
-        URL.revokeObjectURL(url);
-      } else {
-        // Native: expo-file-system ile önbelleğe yaz, expo-sharing ile aç
-        const arrayBuffer = await data.arrayBuffer();
-        const bytes = new Uint8Array(arrayBuffer);
-        let binary = "";
-        const chunkSize = 8192;
-        for (let i = 0; i < bytes.length; i += chunkSize) {
-          binary += String.fromCharCode(...bytes.slice(i, i + chunkSize));
-        }
-        const base64 = btoa(binary);
-        const fileUri = `${FileSystem.cacheDirectory}${name}`;
-        await FileSystem.writeAsStringAsync(fileUri, base64, {
-          encoding: "base64",
-        });
-        await Sharing.shareAsync(fileUri, { mimeType, dialogTitle: name });
+  const handleDownloadFile = useCallback(
+    async (notification: IncomingFileNotification) => {
+      if (!identity?.privateKey) {
+        Alert.alert("Hata", "Özel anahtar bulunamadı.");
+        return;
       }
+      setDownloadingFile(notification.fileId);
+      try {
+        const { data, dataBase64, name, mimeType } = await downloadAndDecryptFile({
+          fileId: notification.fileId,
+          encryptedKey: notification.encryptedKey,
+          recipientPrivateKey: identity.privateKey,
+        });
 
-      // Bildirimden kaldır
-      setIncomingFiles(prev => prev.filter(f => f.fileId !== notification.fileId));
-    } catch (err) {
-      Alert.alert("İndirme Hatası", err instanceof Error ? err.message : "Dosya indirilemedi");
-    } finally {
-      setDownloadingFile(null);
-    }
-  }, [identity]);
+        // Dosyayı tarayıcıda / cihazda aç
+        if (Platform.OS === "web") {
+          const url = URL.createObjectURL(data!);
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = name;
+          a.click();
+          URL.revokeObjectURL(url);
+        } else {
+          // Native: base64'ü direkt yaz (Blob.arrayBuffer() Android'de çalışmaz)
+          const fileUri = `${FileSystem.cacheDirectory}${name}`;
+          await FileSystem.writeAsStringAsync(fileUri, dataBase64!, {
+            encoding: "base64",
+          });
+          await Sharing.shareAsync(fileUri, { mimeType, dialogTitle: name });
+        }
+
+        // Bildirimden kaldır
+        setIncomingFiles((prev) =>
+          prev.filter((f) => f.fileId !== notification.fileId),
+        );
+      } catch (err) {
+        Alert.alert(
+          "İndirme Hatası",
+          err instanceof Error ? err.message : "Dosya indirilemedi",
+        );
+      } finally {
+        setDownloadingFile(null);
+      }
+    },
+    [identity],
+  );
 
   const handleSendMessage = useCallback(async () => {
     if (!inputText.trim() || !identity || !contact) return;
@@ -402,7 +463,11 @@ export default function ChatThreadScreen() {
 
     try {
       if (contact.publicKey && identity.privateKey) {
-        encryptedContent = await encryptMessage(plaintext, contact.publicKey, identity.privateKey);
+        encryptedContent = await encryptMessage(
+          plaintext,
+          contact.publicKey,
+          identity.privateKey,
+        );
       } else if (contact.publicKey) {
         encryptedContent = await encryptMessage(plaintext, contact.publicKey);
       } else {
@@ -410,7 +475,7 @@ export default function ChatThreadScreen() {
         Alert.alert(
           "Şifreleme Hatası",
           "Bu kişinin açık anahtarı bulunamadı. Mesaj gönderilmedi.\n\nKişiyi yeniden QR ile ekleyin.",
-          [{ text: "Tamam" }]
+          [{ text: "Tamam" }],
         );
         return;
       }
@@ -420,7 +485,7 @@ export default function ChatThreadScreen() {
         "Şifreleme Başarısız",
         "Mesajınız şifrelenemedi, güvenlik nedeniyle gönderilmedi.\n\n" +
           (error instanceof Error ? error.message : String(error)),
-        [{ text: "Tamam" }]
+        [{ text: "Tamam" }],
       );
       return;
     }
@@ -442,15 +507,24 @@ export default function ChatThreadScreen() {
 
     socketSendMessage(contactId, encryptedContent, messageId);
 
+    // Mesaj gönderildi → "sent" yap
+    setMessages((prev) =>
+      prev.map((m) => (m.id === messageId ? { ...m, status: "sent" } : m)),
+    );
+    await updateMessageStatus(contactId, messageId, "sent");
+
     if (Platform.OS !== "web") {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     }
   }, [inputText, identity, contact, contactId, messageTimer]);
 
-  const handleMessageLongPress = useCallback((message: Message, displayContent: string) => {
-    setSelectedMessage({ message, displayContent });
-    setActionSheetVisible(true);
-  }, []);
+  const handleMessageLongPress = useCallback(
+    (message: Message, displayContent: string) => {
+      setSelectedMessage({ message, displayContent });
+      setActionSheetVisible(true);
+    },
+    [],
+  );
 
   const handleCopyMessage = useCallback(async () => {
     if (selectedMessage) {
@@ -461,7 +535,9 @@ export default function ChatThreadScreen() {
   const handleDeleteMessage = useCallback(async () => {
     if (selectedMessage) {
       await deleteMessage(contactId, selectedMessage.message.id);
-      setMessages((prev) => prev.filter((m) => m.id !== selectedMessage.message.id));
+      setMessages((prev) =>
+        prev.filter((m) => m.id !== selectedMessage.message.id),
+      );
     }
   }, [selectedMessage, contactId]);
 
@@ -469,10 +545,13 @@ export default function ChatThreadScreen() {
     if (selectedMessage) {
       const isAvailable = await Sharing.isAvailableAsync();
       if (isAvailable) {
-        await Sharing.shareAsync(`data:text/plain;base64,${btoa(selectedMessage.displayContent)}`, {
-          mimeType: "text/plain",
-          dialogTitle: "Share Message",
-        });
+        await Sharing.shareAsync(
+          `data:text/plain;base64,${btoa(selectedMessage.displayContent)}`,
+          {
+            mimeType: "text/plain",
+            dialogTitle: "Share Message",
+          },
+        );
       }
     }
   }, [selectedMessage]);
@@ -504,7 +583,7 @@ export default function ChatThreadScreen() {
 
   return (
     <ThemedView style={styles.container}>
-      <KeyboardAvoidingView 
+      <KeyboardAvoidingView
         style={styles.keyboardView}
         behavior={Platform.OS === "ios" ? "padding" : "height"}
         keyboardVerticalOffset={headerHeight}
@@ -545,12 +624,30 @@ export default function ChatThreadScreen() {
           }
         />
 
-        {/* Gelen dosyalar bildirimi */}
-        {incomingFiles.length > 0 && (
+        {/* Gönderilen ve gelen dosyalar */}
+        {(sentFiles.length > 0 || incomingFiles.length > 0) && (
           <View style={styles.incomingFilesContainer}>
+            {sentFiles.map((file) => (
+              <View key={`sent-${file.fileId}`} style={[styles.incomingFileRow, styles.sentFileRow]}>
+                <Feather name="upload" size={14} color={Colors.dark.secondary} />
+                <ThemedText style={styles.incomingFileName} numberOfLines={1}>
+                  {file.fileName}
+                </ThemedText>
+                <ThemedText style={styles.incomingFileSize}>
+                  {formatFileSize(file.fileSize)}
+                </ThemedText>
+                <View style={styles.sentBadge}>
+                  <ThemedText style={styles.sentBadgeText}>✓ Gönderildi</ThemedText>
+                </View>
+              </View>
+            ))}
             {incomingFiles.map((file) => (
               <View key={file.fileId} style={styles.incomingFileRow}>
-                <Feather name="paperclip" size={14} color={Colors.dark.primary} />
+                <Feather
+                  name="paperclip"
+                  size={14}
+                  color={Colors.dark.primary}
+                />
                 <ThemedText style={styles.incomingFileName} numberOfLines={1}>
                   {file.fileName}
                 </ThemedText>
@@ -560,15 +657,22 @@ export default function ChatThreadScreen() {
                 <Pressable
                   onPress={() => handleDownloadFile(file)}
                   disabled={downloadingFile === file.fileId}
-                  style={({ pressed }) => [styles.downloadBtn, pressed && { opacity: 0.7 }]}
+                  style={({ pressed }) => [
+                    styles.downloadBtn,
+                    pressed && { opacity: 0.7 },
+                  ]}
                 >
                   <Feather
-                    name={downloadingFile === file.fileId ? "loader" : "download"}
+                    name={
+                      downloadingFile === file.fileId ? "loader" : "download"
+                    }
                     size={14}
                     color={Colors.dark.buttonText}
                   />
                   <ThemedText style={styles.downloadBtnText}>
-                    {downloadingFile === file.fileId ? "İndiriliyor..." : "İndir"}
+                    {downloadingFile === file.fileId
+                      ? "İndiriliyor..."
+                      : "İndir"}
                   </ThemedText>
                 </Pressable>
               </View>
@@ -580,12 +684,19 @@ export default function ChatThreadScreen() {
           <Pressable
             onPress={handleSendFile}
             disabled={sendingFile}
-            style={({ pressed }) => [styles.attachButton, pressed && { opacity: 0.7 }]}
+            style={({ pressed }) => [
+              styles.attachButton,
+              pressed && { opacity: 0.7 },
+            ]}
           >
             <Feather
               name={sendingFile ? "loader" : "paperclip"}
               size={20}
-              color={sendingFile ? Colors.dark.textDisabled : Colors.dark.textSecondary}
+              color={
+                sendingFile
+                  ? Colors.dark.textDisabled
+                  : Colors.dark.textSecondary
+              }
             />
           </Pressable>
           <TextInput
@@ -609,12 +720,16 @@ export default function ChatThreadScreen() {
             <Feather
               name="send"
               size={20}
-              color={inputText.trim() ? Colors.dark.buttonText : Colors.dark.textDisabled}
+              color={
+                inputText.trim()
+                  ? Colors.dark.buttonText
+                  : Colors.dark.textDisabled
+              }
             />
           </Pressable>
         </View>
       </KeyboardAvoidingView>
-      
+
       <ActionSheet
         visible={actionSheetVisible}
         onClose={() => setActionSheetVisible(false)}
@@ -743,6 +858,21 @@ const styles = StyleSheet.create({
   downloadBtnText: {
     fontSize: 11,
     color: Colors.dark.buttonText,
+    fontWeight: "600",
+  },
+  sentFileRow: {
+    backgroundColor: Colors.dark.secondary + "15",
+    borderColor: Colors.dark.secondary + "33",
+  },
+  sentBadge: {
+    backgroundColor: Colors.dark.secondary + "30",
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: 2,
+    borderRadius: BorderRadius.xs,
+  },
+  sentBadgeText: {
+    fontSize: 11,
+    color: Colors.dark.secondary,
     fontWeight: "600",
   },
   attachButton: {

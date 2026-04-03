@@ -40,13 +40,13 @@ async function aesEncrypt(data: ArrayBuffer): Promise<{
   const key = await crypto.subtle.generateKey(
     { name: "AES-GCM", length: 256 },
     true,
-    ["encrypt", "decrypt"]
+    ["encrypt", "decrypt"],
   );
   const iv = crypto.getRandomValues(new Uint8Array(12));
   const encrypted = await crypto.subtle.encrypt(
     { name: "AES-GCM", iv: iv as unknown as BufferSource },
     key,
-    data
+    data,
   );
   return { encrypted, key, iv };
 }
@@ -54,9 +54,13 @@ async function aesEncrypt(data: ArrayBuffer): Promise<{
 async function aesDecrypt(
   encrypted: ArrayBuffer,
   key: CryptoKey,
-  iv: Uint8Array
+  iv: Uint8Array,
 ): Promise<ArrayBuffer> {
-  return crypto.subtle.decrypt({ name: "AES-GCM", iv: iv as unknown as BufferSource }, key, encrypted);
+  return crypto.subtle.decrypt(
+    { name: "AES-GCM", iv: iv as unknown as BufferSource },
+    key,
+    encrypted,
+  );
 }
 
 // ── AES key'i dışa aktar ve OpenPGP ile şifrele ───────────────────────
@@ -64,7 +68,7 @@ async function encryptAesKey(
   aesKey: CryptoKey,
   iv: Uint8Array,
   recipientPublicKeyArmored: string,
-  senderPrivateKeyArmored?: string
+  senderPrivateKeyArmored?: string,
 ): Promise<string> {
   const rawKey = await crypto.subtle.exportKey("raw", aesKey);
   const keyBytes = new Uint8Array(rawKey);
@@ -76,10 +80,14 @@ async function encryptAesKey(
 
   const keyBase64 = btoa(String.fromCharCode(...combined));
 
-  const recipientKey = await openpgp.readKey({ armoredKey: recipientPublicKeyArmored });
+  const recipientKey = await openpgp.readKey({
+    armoredKey: recipientPublicKeyArmored,
+  });
   if (senderPrivateKeyArmored) {
     try {
-      const privKey = await openpgp.readPrivateKey({ armoredKey: senderPrivateKeyArmored });
+      const privKey = await openpgp.readPrivateKey({
+        armoredKey: senderPrivateKeyArmored,
+      });
       const result = await openpgp.encrypt({
         message: await openpgp.createMessage({ text: keyBase64 }),
         encryptionKeys: recipientKey,
@@ -103,9 +111,11 @@ async function encryptAesKey(
 // ── Şifreli AES key'i çöz ─────────────────────────────────────────────
 async function decryptAesKey(
   encryptedKey: string,
-  privateKeyArmored: string
+  privateKeyArmored: string,
 ): Promise<{ key: CryptoKey; iv: Uint8Array }> {
-  const privKey = await openpgp.readPrivateKey({ armoredKey: privateKeyArmored });
+  const privKey = await openpgp.readPrivateKey({
+    armoredKey: privateKeyArmored,
+  });
   const message = await openpgp.readMessage({ armoredMessage: encryptedKey });
 
   const { data } = await openpgp.decrypt({
@@ -113,7 +123,9 @@ async function decryptAesKey(
     decryptionKeys: privKey,
   });
 
-  const combined = Uint8Array.from(atob(data as string), c => c.charCodeAt(0));
+  const combined = Uint8Array.from(atob(data as string), (c) =>
+    c.charCodeAt(0),
+  );
   const iv = combined.slice(0, 12);
   const keyBytes = combined.slice(12);
 
@@ -122,7 +134,7 @@ async function decryptAesKey(
     keyBytes,
     { name: "AES-GCM" },
     false,
-    ["decrypt"]
+    ["decrypt"],
   );
 
   return { key, iv };
@@ -130,12 +142,17 @@ async function decryptAesKey(
 
 // ── Dosyayı oku ve ArrayBuffer döndür ────────────────────────────────
 function readFileAsArrayBuffer(file: File): Promise<ArrayBuffer> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result as ArrayBuffer);
-    reader.onerror = reject;
-    reader.readAsArrayBuffer(file);
-  });
+  // Web: FileReader kullan. React Native: Blob.arrayBuffer() kullan
+  if (typeof FileReader !== "undefined") {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as ArrayBuffer);
+      reader.onerror = reject;
+      reader.readAsArrayBuffer(file);
+    });
+  }
+  // React Native — Blob.arrayBuffer() polyfill'i var
+  return (file as unknown as Blob).arrayBuffer();
 }
 
 // ── ArrayBuffer'ı base64'e dönüştür ──────────────────────────────────
@@ -161,10 +178,15 @@ function base64ToArrayBuffer(base64: string): ArrayBuffer {
 
 // ── Ana API: Dosya paylaş ─────────────────────────────────────────────
 export async function shareFile(params: {
-  file: File;
+  file?: File;
+  // Android native için Blob'dan kaçınmak adına base64 alternatifi:
+  fileBase64?: string;
+  fileName?: string;
+  fileMimeType?: string;
+  fileSize?: number;
   recipientPublicKey: string;
   senderPrivateKey?: string;
-  scrubMetadata?: boolean;   // EXIF/metadata temizle (autoMetadataScrubbing)
+  scrubMetadata?: boolean; // EXIF/metadata temizle (autoMetadataScrubbing)
   onProgress?: (progress: FileShareProgress) => void;
 }): Promise<{
   fileId: string;
@@ -172,25 +194,69 @@ export async function shareFile(params: {
   downloadUrl: string;
   expiresAt: number;
 }> {
-  const { file: rawFile, recipientPublicKey, senderPrivateKey, scrubMetadata, onProgress } = params;
+  const {
+    file: rawFile,
+    fileBase64,
+    fileName: fileNameParam,
+    fileMimeType: fileMimeTypeParam,
+    fileSize: fileSizeParam,
+    recipientPublicKey,
+    senderPrivateKey,
+    scrubMetadata,
+    onProgress,
+  } = params;
 
-  onProgress?.({ stage: "encrypting", percent: 5, message: "Dosya hazırlanıyor..." });
+  if (!rawFile && !fileBase64) {
+    throw new Error("file veya fileBase64 gerekli");
+  }
 
-  // 0. Metadata temizleme (isteğe bağlı)
-  const file = scrubMetadata ? await scrubFileMetadata(rawFile) : rawFile;
+  const actualFileName = rawFile?.name || fileNameParam || "file";
+  const actualMimeType = rawFile?.type || fileMimeTypeParam || "application/octet-stream";
+  const actualFileSize = rawFile?.size || fileSizeParam || 0;
 
-  onProgress?.({ stage: "encrypting", percent: 10, message: "Dosya şifreleniyor..." });
+  onProgress?.({
+    stage: "encrypting",
+    percent: 5,
+    message: "Dosya hazırlanıyor...",
+  });
 
-  // 1. Dosyayı oku
-  const fileData = await readFileAsArrayBuffer(file);
+  // 0. Metadata temizleme (isteğe bağlı — sadece File nesnesi varsa)
+  const file = (rawFile && scrubMetadata) ? await scrubFileMetadata(rawFile) : rawFile;
+
+  onProgress?.({
+    stage: "encrypting",
+    percent: 10,
+    message: "Dosya şifreleniyor...",
+  });
+
+  // 1. Dosyayı oku — base64 varsa direkt dönüştür, yoksa FileReader kullan
+  let fileData: ArrayBuffer;
+  if (fileBase64) {
+    fileData = base64ToArrayBuffer(fileBase64);
+  } else {
+    fileData = await readFileAsArrayBuffer(file!);
+  }
 
   // 2. AES-256-GCM ile şifrele
   const { encrypted, key, iv } = await aesEncrypt(fileData);
-  onProgress?.({ stage: "encrypting", percent: 40, message: "Anahtar şifreleniyor..." });
+  onProgress?.({
+    stage: "encrypting",
+    percent: 40,
+    message: "Anahtar şifreleniyor...",
+  });
 
   // 3. AES key'i alıcının OpenPGP public key'i ile şifrele
-  const encryptedKey = await encryptAesKey(key, iv, recipientPublicKey, senderPrivateKey);
-  onProgress?.({ stage: "uploading", percent: 50, message: "Sunucuya yükleniyor..." });
+  const encryptedKey = await encryptAesKey(
+    key,
+    iv,
+    recipientPublicKey,
+    senderPrivateKey,
+  );
+  onProgress?.({
+    stage: "uploading",
+    percent: 50,
+    message: "Sunucuya yükleniyor...",
+  });
 
   // 4. Şifreli dosyayı base64'e çevir ve relay'e yükle
   const encryptedBase64 = arrayBufferToBase64(encrypted);
@@ -200,9 +266,9 @@ export async function shareFile(params: {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      name: file.name,
-      size: file.size,
-      mimeType: file.type || "application/octet-stream",
+      name: file?.name || actualFileName,
+      size: file?.size || actualFileSize,
+      mimeType: file?.type || actualMimeType,
       encryptedData: encryptedBase64,
       uploadedBy: "self",
       maxDownloads: 5,
@@ -231,21 +297,31 @@ export async function downloadAndDecryptFile(params: {
   encryptedKey: string;
   recipientPrivateKey: string;
   onProgress?: (progress: FileShareProgress) => void;
-}): Promise<{ data: Blob; name: string; mimeType: string }> {
+}): Promise<{ data: Blob | null; dataBase64: string | null; name: string; mimeType: string }> {
   const { fileId, encryptedKey, recipientPrivateKey, onProgress } = params;
 
-  onProgress?.({ stage: "encrypting", percent: 10, message: "Dosya indiriliyor..." });
+  onProgress?.({
+    stage: "encrypting",
+    percent: 10,
+    message: "Dosya indiriliyor...",
+  });
 
   const apiUrl = getApiUrl();
   const response = await fetch(`${apiUrl}api/files/${fileId}`);
 
   if (!response.ok) {
-    const err = await response.json().catch(() => ({ error: "Download failed" }));
+    const err = await response
+      .json()
+      .catch(() => ({ error: "Download failed" }));
     throw new Error(err.error || "Dosya indirilemedi");
   }
 
   const fileData = await response.json();
-  onProgress?.({ stage: "encrypting", percent: 50, message: "Deşifre ediliyor..." });
+  onProgress?.({
+    stage: "encrypting",
+    percent: 50,
+    message: "Deşifre ediliyor...",
+  });
 
   // AES key'i çöz
   const { key, iv } = await decryptAesKey(encryptedKey, recipientPrivateKey);
@@ -256,11 +332,22 @@ export async function downloadAndDecryptFile(params: {
 
   onProgress?.({ stage: "done", percent: 100, message: "Dosya hazır!" });
 
-  return {
-    data: new Blob([decrypted], { type: fileData.mimeType }),
-    name: fileData.name,
-    mimeType: fileData.mimeType,
-  };
+  // Android'de new Blob([ArrayBuffer]) desteklenmez; native için base64 döndür
+  if (Platform.OS === "web") {
+    return {
+      data: new Blob([decrypted], { type: fileData.mimeType }),
+      dataBase64: null,
+      name: fileData.name,
+      mimeType: fileData.mimeType,
+    };
+  } else {
+    return {
+      data: null,
+      dataBase64: arrayBufferToBase64(decrypted),
+      name: fileData.name,
+      mimeType: fileData.mimeType,
+    };
+  }
 }
 
 // ── EXIF / Metadata Temizleme ─────────────────────────────────────────
@@ -287,15 +374,20 @@ export async function scrubFileMetadata(file: File): Promise<File> {
 
       const outputMime = file.type === "image/png" ? "image/png" : "image/jpeg";
       const blob = await new Promise<Blob>((resolve, reject) => {
-        canvas.toBlob((b) => {
-          if (b) resolve(b);
-          else reject(new Error("Canvas toBlob failed"));
-        }, outputMime, 0.95);
+        canvas.toBlob(
+          (b) => {
+            if (b) resolve(b);
+            else reject(new Error("Canvas toBlob failed"));
+          },
+          outputMime,
+          0.95,
+        );
       });
       return new File([blob], file.name, { type: outputMime });
     } else {
       // Mobil (React Native): expo-image-manipulator
-      const { manipulateAsync, SaveFormat } = await import("expo-image-manipulator");
+      const { manipulateAsync, SaveFormat } =
+        await import("expo-image-manipulator");
       const uri = (file as any).uri || URL.createObjectURL(file);
       const result = await manipulateAsync(uri, [], {
         compress: 0.95,
@@ -316,7 +408,8 @@ export async function scrubFileMetadata(file: File): Promise<File> {
 export function formatFileSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  if (bytes < 1024 * 1024 * 1024)
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
 }
 
@@ -326,7 +419,12 @@ export function getFileIcon(mimeType: string): string {
   if (mimeType.startsWith("video/")) return "video";
   if (mimeType.startsWith("audio/")) return "music";
   if (mimeType.includes("pdf")) return "file-text";
-  if (mimeType.includes("zip") || mimeType.includes("rar") || mimeType.includes("tar")) return "archive";
+  if (
+    mimeType.includes("zip") ||
+    mimeType.includes("rar") ||
+    mimeType.includes("tar")
+  )
+    return "archive";
   if (mimeType.includes("text")) return "file-text";
   return "file";
 }

@@ -36,10 +36,19 @@ import {
   isConnected,
 } from "@/lib/socket";
 import { formatFileSize } from "@/lib/file-share";
-import { getApiUrl } from "@/lib/query-client";
+import { getApiUrl, getTunnelBypassHeaders } from "@/lib/query-client";
+import * as FileSystem from "expo-file-system/legacy";
+import * as Sharing from "expo-sharing";
 import { useLowPower } from "@/constants/lowPower";
 
-type MatchStatus = "idle" | "searching" | "found" | "waiting_partner" | "connected" | "declined" | "partner_left";
+type MatchStatus =
+  | "idle"
+  | "searching"
+  | "found"
+  | "waiting_partner"
+  | "connected"
+  | "declined"
+  | "partner_left";
 
 interface MatchInfo {
   sessionId: string;
@@ -76,21 +85,39 @@ function RadarRing({ delay, disabled }: { delay: number; disabled?: boolean }) {
       Animated.sequence([
         Animated.delay(delay),
         Animated.parallel([
-          Animated.timing(scale,   { toValue: 2.8, duration: 2200, useNativeDriver: true }),
-          Animated.timing(opacity, { toValue: 0,   duration: 2200, useNativeDriver: true }),
+          Animated.timing(scale, {
+            toValue: 2.8,
+            duration: 2200,
+            useNativeDriver: true,
+          }),
+          Animated.timing(opacity, {
+            toValue: 0,
+            duration: 2200,
+            useNativeDriver: true,
+          }),
         ]),
         Animated.parallel([
-          Animated.timing(scale,   { toValue: 0.6, duration: 0, useNativeDriver: true }),
-          Animated.timing(opacity, { toValue: 0.6, duration: 0, useNativeDriver: true }),
+          Animated.timing(scale, {
+            toValue: 0.6,
+            duration: 0,
+            useNativeDriver: true,
+          }),
+          Animated.timing(opacity, {
+            toValue: 0.6,
+            duration: 0,
+            useNativeDriver: true,
+          }),
         ]),
-      ])
+      ]),
     );
     anim.start();
     return () => anim.stop();
   }, [disabled]);
 
   return (
-    <Animated.View style={[styles.radarRing, { transform: [{ scale }], opacity }]} />
+    <Animated.View
+      style={[styles.radarRing, { transform: [{ scale }], opacity }]}
+    />
   );
 }
 
@@ -114,7 +141,8 @@ export default function MatchingScreen() {
   const chatListRef = useRef<FlatList>(null);
 
   const haptic = () => {
-    if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    if (Platform.OS !== "web")
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
   };
 
   // Socket olaylarını dinle
@@ -134,7 +162,8 @@ export default function MatchingScreen() {
           });
           setSessionId(event.sessionId);
           setStatus("found");
-          if (Platform.OS !== "web") Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+          if (Platform.OS !== "web")
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
           break;
 
         case "partner_accepted":
@@ -144,24 +173,21 @@ export default function MatchingScreen() {
         case "connected":
           setStatus("connected");
           setSessionId(event.sessionId);
-          if (Platform.OS !== "web") Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+          if (Platform.OS !== "web")
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
           break;
 
         case "declined":
         case "declined_by_you":
           setStatus("declined");
           setMatchInfo(null);
-          setTimeout(() => setStatus("idle"), 1500);
+          setSessionId(null);
           break;
 
         case "partner_left":
         case "session_ended":
           setStatus("partner_left");
-          setTimeout(() => {
-            setStatus("idle");
-            setMatchInfo(null);
-            setSessionId(null);
-          }, 2000);
+          setSessionId(null);
           break;
 
         case "cancelled":
@@ -169,38 +195,44 @@ export default function MatchingScreen() {
           break;
 
         case "message":
-          setChatItems(prev => [...prev, {
-            id: `msg-${Date.now()}-${Math.random()}`,
-            type: "text",
-            content: event.encrypted,
-            mine: false,
-            timestamp: event.timestamp,
-          }]);
-          if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+          setChatItems((prev) => [
+            ...prev,
+            {
+              id: `msg-${Date.now()}-${Math.random()}`,
+              type: "text",
+              content: event.encrypted,
+              mine: false,
+              timestamp: event.timestamp,
+            },
+          ]);
+          if (Platform.OS !== "web")
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
           break;
 
         case "file_share":
-          setChatItems(prev => [...prev, {
-            id: `file-${event.fileId}`,
-            type: "file",
-            content: event.fileName,
-            mine: false,
-            timestamp: event.timestamp,
-            fileId: event.fileId,
-            fileName: event.fileName,
-            fileSize: event.fileSize,
-            mimeType: event.mimeType,
-            encryptedKey: event.encryptedKey,
-          }]);
-          if (Platform.OS !== "web") Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+          setChatItems((prev) => [
+            ...prev,
+            {
+              id: `file-${event.fileId}`,
+              type: "file",
+              content: event.fileName,
+              mine: false,
+              timestamp: event.timestamp,
+              fileId: event.fileId,
+              fileName: event.fileName,
+              fileSize: event.fileSize,
+              mimeType: event.mimeType,
+              encryptedKey: event.encryptedKey,
+            },
+          ]);
+          if (Platform.OS !== "web")
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
           break;
 
         case "error":
-          Alert.alert(
-            isTr ? "Hata" : "Error",
-            event.message,
-            [{ text: "Tamam" }]
-          );
+          Alert.alert(isTr ? "Hata" : "Error", event.message, [
+            { text: "Tamam" },
+          ]);
           setStatus("idle");
           break;
       }
@@ -213,8 +245,10 @@ export default function MatchingScreen() {
     if (!isConnected()) {
       Alert.alert(
         isTr ? "Bağlantı Yok" : "Not Connected",
-        isTr ? "Sunucuya bağlı değilsiniz. Lütfen ağ bağlantınızı kontrol edin." : "Not connected to server. Please check your network.",
-        [{ text: "Tamam" }]
+        isTr
+          ? "Sunucuya bağlı değilsiniz. Lütfen ağ bağlantınızı kontrol edin."
+          : "Not connected to server. Please check your network.",
+        [{ text: "Tamam" }],
       );
       return;
     }
@@ -241,7 +275,8 @@ export default function MatchingScreen() {
     if (sessionId) {
       socketDeclineMatch(sessionId);
       setStatus("declined");
-      setTimeout(() => setStatus("idle"), 800);
+      setMatchInfo(null);
+      setSessionId(null);
     }
   };
 
@@ -257,24 +292,44 @@ export default function MatchingScreen() {
   // Mesaj gönder (anonim oturumda)
   const handleSendChatMessage = useCallback(() => {
     if (!chatInput.trim() || !sessionId) return;
+    if (!isConnected()) {
+      Alert.alert(
+        isTr ? "Bağlantı Yok" : "Not Connected",
+        isTr ? "Sunucuya bağlı değilsiniz." : "Not connected to server.",
+        [{ text: "OK" }],
+      );
+      return;
+    }
     const text = chatInput.trim();
     // Anonim oturumda mesaj şifreleme yoktur (her iki taraf da anonim key'e sahip değil)
     // Mesajlar transit şifreleme ile gönderilir (TLS/Tor)
     sendMatchingMessage(sessionId, text);
-    setChatItems(prev => [...prev, {
-      id: `msg-${Date.now()}`,
-      type: "text",
-      content: text,
-      mine: true,
-      timestamp: Date.now(),
-    }]);
+    setChatItems((prev) => [
+      ...prev,
+      {
+        id: `msg-${Date.now()}`,
+        type: "text",
+        content: text,
+        mine: true,
+        timestamp: Date.now(),
+      },
+    ]);
     setChatInput("");
-    if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-  }, [chatInput, sessionId]);
+    if (Platform.OS !== "web")
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  }, [chatInput, sessionId, isTr]);
 
   // Dosya gönder (anonim oturumda)
   const handleSendFile = useCallback(async () => {
     if (!sessionId) return;
+    if (!isConnected()) {
+      Alert.alert(
+        isTr ? "Bağlantı Yok" : "Not Connected",
+        isTr ? "Sunucuya bağlı değilsiniz." : "Not connected to server.",
+        [{ text: "OK" }],
+      );
+      return;
+    }
     try {
       const result = await DocumentPicker.getDocumentAsync({
         type: "*/*",
@@ -285,17 +340,33 @@ export default function MatchingScreen() {
 
       setSendingFile(true);
 
-      // Dosyayı AES ile şifrele (anonim oturum — OpenPGP sarmalı YOK, sadece AES key'i paylaşıyoruz)
-      // Anonim partner'ın public key'i yok, bu yüzden sadece raw AES key'i base64 olarak encryptedKey'e koyuyoruz
-      // Güvenli çünkü mesaj transit şifreleme (TLS/Tor) ile korunuyor
-      const response = await fetch(asset.uri);
-      const blob = await response.blob();
-
-      // Anonim mod: alıcının public key'i olmadığı için sadece AES-GCM ile şifrele + AES key'i raw ilet
-      const fileData = await new Response(blob).arrayBuffer();
-      const aesKey = await crypto.subtle.generateKey({ name: "AES-GCM", length: 256 }, true, ["encrypt", "decrypt"]);
+      // Platform-aware dosya okuma (new Response(blob).arrayBuffer() native'de çalışmaz)
+      let fileData: ArrayBuffer;
+      if (Platform.OS === "web") {
+        const response = await fetch(asset.uri);
+        const blob = await response.blob();
+        fileData = await blob.arrayBuffer();
+      } else {
+        const base64 = await FileSystem.readAsStringAsync(asset.uri, {
+          encoding: FileSystem.EncodingType.Base64,
+        });
+        const binaryStr = atob(base64);
+        const bytes = new Uint8Array(binaryStr.length);
+        for (let i = 0; i < binaryStr.length; i++)
+          bytes[i] = binaryStr.charCodeAt(i);
+        fileData = bytes.buffer;
+      }
+      const aesKey = await crypto.subtle.generateKey(
+        { name: "AES-GCM", length: 256 },
+        true,
+        ["encrypt", "decrypt"],
+      );
       const iv = crypto.getRandomValues(new Uint8Array(12));
-      const encrypted = await crypto.subtle.encrypt({ name: "AES-GCM", iv: iv as unknown as BufferSource }, aesKey, fileData);
+      const encrypted = await crypto.subtle.encrypt(
+        { name: "AES-GCM", iv: iv as unknown as BufferSource },
+        aesKey,
+        fileData,
+      );
       const rawKey = await crypto.subtle.exportKey("raw", aesKey);
 
       // iv + key birleştir, base64 yap
@@ -316,10 +387,13 @@ export default function MatchingScreen() {
       const apiUrl = getApiUrl();
       const uploadRes = await fetch(`${apiUrl}api/files/upload`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...getTunnelBypassHeaders(apiUrl),
+        },
         body: JSON.stringify({
           name: asset.name,
-          size: asset.size || blob.size,
+          size: asset.size || fileData.byteLength,
           mimeType: asset.mimeType || "application/octet-stream",
           encryptedData: encryptedBase64,
           uploadedBy: "anonymous",
@@ -328,87 +402,137 @@ export default function MatchingScreen() {
       });
 
       if (!uploadRes.ok) {
-        throw new Error("Dosya yüklenemedi");
+        throw new Error(
+          isTr
+            ? "Dosya sunucuya yüklenemedi. Ağ bağlantınızı kontrol edin."
+            : "Failed to upload file. Check your network connection.",
+        );
       }
       const { fileId } = await uploadRes.json();
+
+      const fileSize = asset.size || fileData.byteLength;
 
       // Anonim partnere bildir
       sendMatchingFileShare(sessionId, {
         fileId,
         fileName: asset.name,
-        fileSize: asset.size || blob.size,
+        fileSize,
         mimeType: asset.mimeType || "application/octet-stream",
         encryptedKey,
       });
 
-      setChatItems(prev => [...prev, {
-        id: `file-${fileId}`,
-        type: "file",
-        content: asset.name,
-        mine: true,
-        timestamp: Date.now(),
-        fileId,
-        fileName: asset.name,
-        fileSize: asset.size || blob.size,
-        mimeType: asset.mimeType || "application/octet-stream",
-        encryptedKey,
-      }]);
+      setChatItems((prev) => [
+        ...prev,
+        {
+          id: `file-${fileId}`,
+          type: "file",
+          content: asset.name,
+          mine: true,
+          timestamp: Date.now(),
+          fileId,
+          fileName: asset.name,
+          fileSize,
+          mimeType: asset.mimeType || "application/octet-stream",
+          encryptedKey,
+        },
+      ]);
 
-      if (Platform.OS !== "web") Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      if (Platform.OS !== "web")
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } catch (err) {
-      Alert.alert(isTr ? "Hata" : "Error", err instanceof Error ? err.message : "Dosya gönderilemedi");
+      Alert.alert(
+        isTr ? "Hata" : "Error",
+        err instanceof Error ? err.message : "Dosya gönderilemedi",
+      );
     } finally {
       setSendingFile(false);
     }
   }, [sessionId, isTr]);
 
   // Dosya indir (anonim modda — raw AES key ile)
-  const handleDownloadAnonymousFile = useCallback(async (item: ChatItem) => {
-    if (!item.fileId || !item.encryptedKey) return;
-    setDownloadingFile(item.fileId);
-    try {
-      const apiUrl = getApiUrl();
-      const res = await fetch(`${apiUrl}api/files/${item.fileId}`);
-      if (!res.ok) throw new Error("Dosya indirilemedi");
-      const fileData = await res.json();
+  const handleDownloadAnonymousFile = useCallback(
+    async (item: ChatItem) => {
+      if (!item.fileId || !item.encryptedKey) return;
+      setDownloadingFile(item.fileId);
+      try {
+        const apiUrl = getApiUrl();
+        const res = await fetch(`${apiUrl}api/files/${item.fileId}`, {
+          headers: getTunnelBypassHeaders(apiUrl),
+        });
+        if (!res.ok) throw new Error("Dosya indirilemedi");
+        const fileData = await res.json();
 
-      // raw AES key çöz
-      const combined = Uint8Array.from(atob(item.encryptedKey), c => c.charCodeAt(0));
-      const iv = combined.slice(0, 12);
-      const keyBytes = combined.slice(12);
-      const aesKey = await crypto.subtle.importKey("raw", keyBytes, { name: "AES-GCM" }, false, ["decrypt"]);
+        // raw AES key çöz
+        const combined = Uint8Array.from(atob(item.encryptedKey), (c) =>
+          c.charCodeAt(0),
+        );
+        const iv = combined.slice(0, 12);
+        const keyBytes = combined.slice(12);
+        const aesKey = await crypto.subtle.importKey(
+          "raw",
+          keyBytes,
+          { name: "AES-GCM" },
+          false,
+          ["decrypt"],
+        );
 
-      // Deşifre et
-      const encBin = atob(fileData.encryptedData);
-      const encBytes = new Uint8Array(encBin.length);
-      for (let i = 0; i < encBin.length; i++) encBytes[i] = encBin.charCodeAt(i);
-      const decrypted = await crypto.subtle.decrypt(
-        { name: "AES-GCM", iv: iv as unknown as BufferSource },
-        aesKey,
-        encBytes.buffer
-      );
+        // Deşifre et
+        const encBin = atob(fileData.encryptedData);
+        const encBytes = new Uint8Array(encBin.length);
+        for (let i = 0; i < encBin.length; i++)
+          encBytes[i] = encBin.charCodeAt(i);
+        const decrypted = await crypto.subtle.decrypt(
+          { name: "AES-GCM", iv: iv as unknown as BufferSource },
+          aesKey,
+          encBytes.buffer,
+        );
 
-      // İndir
-      const blob = new Blob([decrypted], { type: fileData.mimeType });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = fileData.name;
-      a.click();
-      URL.revokeObjectURL(url);
-    } catch (err) {
-      Alert.alert(isTr ? "Hata" : "Error", err instanceof Error ? err.message : "İndirme başarısız");
-    } finally {
-      setDownloadingFile(null);
-    }
-  }, [isTr]);
+        if (Platform.OS === "web") {
+          const blob = new Blob([decrypted], { type: fileData.mimeType });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = fileData.name;
+          a.click();
+          URL.revokeObjectURL(url);
+        } else {
+          // Native: base64 olarak kaydet ve paylaş
+          const decBytes = new Uint8Array(decrypted);
+          let binary = "";
+          for (let i = 0; i < decBytes.length; i += 8192) {
+            binary += String.fromCharCode(...decBytes.slice(i, i + 8192));
+          }
+          const base64 = btoa(binary);
+          const fileUri = `${FileSystem.cacheDirectory}${fileData.name}`;
+          await FileSystem.writeAsStringAsync(fileUri, base64, {
+            encoding: "base64",
+          });
+          await Sharing.shareAsync(fileUri, {
+            mimeType: fileData.mimeType,
+            dialogTitle: fileData.name,
+          });
+        }
+      } catch (err) {
+        Alert.alert(
+          isTr ? "Hata" : "Error",
+          err instanceof Error ? err.message : "İndirme başarısız",
+        );
+      } finally {
+        setDownloadingFile(null);
+      }
+    },
+    [isTr],
+  );
 
   // Bağlantı kurulunca tam ekran chat göster
   if (status === "connected") {
     return (
       <ThemedView style={styles.container}>
         <KeyboardAvoidingView
-          style={[styles.chatContainer, { paddingTop: headerHeight, paddingBottom: tabBarHeight }]}
+          style={[
+            styles.chatContainer,
+            { paddingTop: headerHeight, paddingBottom: tabBarHeight },
+          ]}
           behavior={Platform.OS === "ios" ? "padding" : "height"}
           keyboardVerticalOffset={headerHeight}
         >
@@ -428,7 +552,10 @@ export default function MatchingScreen() {
             </View>
             <Pressable
               onPress={handleEndSession}
-              style={({ pressed }) => [styles.endSessionBtnSmall, pressed && { opacity: 0.7 }]}
+              style={({ pressed }) => [
+                styles.endSessionBtnSmall,
+                pressed && { opacity: 0.7 },
+              ]}
             >
               <Feather name="log-out" size={14} color={Colors.dark.error} />
               <ThemedText style={styles.endSessionTextSmall}>
@@ -443,21 +570,47 @@ export default function MatchingScreen() {
             style={styles.chatList}
             data={chatItems}
             keyExtractor={(item) => item.id}
-            onContentSizeChange={() => chatListRef.current?.scrollToEnd({ animated: true })}
+            onContentSizeChange={() =>
+              chatListRef.current?.scrollToEnd({ animated: true })
+            }
             renderItem={({ item }) => (
-              <View style={[styles.chatBubble, item.mine ? styles.chatBubbleMine : styles.chatBubbleTheirs]}>
+              <View
+                style={[
+                  styles.chatBubble,
+                  item.mine ? styles.chatBubbleMine : styles.chatBubbleTheirs,
+                ]}
+              >
                 {item.type === "text" ? (
-                  <ThemedText style={[styles.chatText, item.mine && styles.chatTextMine]}>
+                  <ThemedText
+                    style={[styles.chatText, item.mine && styles.chatTextMine]}
+                  >
                     {item.content}
                   </ThemedText>
                 ) : (
                   <View style={styles.fileBubble}>
-                    <Feather name="paperclip" size={14} color={item.mine ? Colors.dark.buttonText : Colors.dark.primary} />
+                    <Feather
+                      name="paperclip"
+                      size={14}
+                      color={
+                        item.mine ? Colors.dark.buttonText : Colors.dark.primary
+                      }
+                    />
                     <View style={styles.fileBubbleInfo}>
-                      <ThemedText style={[styles.fileBubbleName, item.mine && styles.chatTextMine]} numberOfLines={1}>
+                      <ThemedText
+                        style={[
+                          styles.fileBubbleName,
+                          item.mine && styles.chatTextMine,
+                        ]}
+                        numberOfLines={1}
+                      >
                         {item.fileName}
                       </ThemedText>
-                      <ThemedText style={[styles.fileBubbleSize, item.mine && { color: Colors.dark.buttonText + "99" }]}>
+                      <ThemedText
+                        style={[
+                          styles.fileBubbleSize,
+                          item.mine && { color: Colors.dark.buttonText + "99" },
+                        ]}
+                      >
                         {formatFileSize(item.fileSize || 0)}
                       </ThemedText>
                     </View>
@@ -465,10 +618,17 @@ export default function MatchingScreen() {
                       <Pressable
                         onPress={() => handleDownloadAnonymousFile(item)}
                         disabled={downloadingFile === item.fileId}
-                        style={({ pressed }) => [styles.fileDlBtn, pressed && { opacity: 0.7 }]}
+                        style={({ pressed }) => [
+                          styles.fileDlBtn,
+                          pressed && { opacity: 0.7 },
+                        ]}
                       >
                         <Feather
-                          name={downloadingFile === item.fileId ? "loader" : "download"}
+                          name={
+                            downloadingFile === item.fileId
+                              ? "loader"
+                              : "download"
+                          }
                           size={14}
                           color={Colors.dark.buttonText}
                         />
@@ -476,14 +636,23 @@ export default function MatchingScreen() {
                     )}
                   </View>
                 )}
-                <ThemedText style={[styles.chatTime, item.mine && styles.chatTimeMine]}>
-                  {new Date(item.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                <ThemedText
+                  style={[styles.chatTime, item.mine && styles.chatTimeMine]}
+                >
+                  {new Date(item.timestamp).toLocaleTimeString([], {
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  })}
                 </ThemedText>
               </View>
             )}
             ListEmptyComponent={
               <View style={styles.chatEmpty}>
-                <Feather name="message-circle" size={28} color={Colors.dark.textSecondary} />
+                <Feather
+                  name="message-circle"
+                  size={28}
+                  color={Colors.dark.textSecondary}
+                />
                 <ThemedText style={styles.chatEmptyText}>
                   {isTr
                     ? "Anonim oturum başladı. Mesaj veya dosya gönderebilirsiniz."
@@ -499,12 +668,19 @@ export default function MatchingScreen() {
             <Pressable
               onPress={handleSendFile}
               disabled={sendingFile}
-              style={({ pressed }) => [styles.chatAttachBtn, pressed && { opacity: 0.7 }]}
+              style={({ pressed }) => [
+                styles.chatAttachBtn,
+                pressed && { opacity: 0.7 },
+              ]}
             >
               <Feather
                 name={sendingFile ? "loader" : "paperclip"}
                 size={20}
-                color={sendingFile ? Colors.dark.textDisabled : Colors.dark.textSecondary}
+                color={
+                  sendingFile
+                    ? Colors.dark.textDisabled
+                    : Colors.dark.textSecondary
+                }
               />
             </Pressable>
             <TextInput
@@ -528,7 +704,11 @@ export default function MatchingScreen() {
               <Feather
                 name="send"
                 size={18}
-                color={chatInput.trim() ? Colors.dark.buttonText : Colors.dark.textDisabled}
+                color={
+                  chatInput.trim()
+                    ? Colors.dark.buttonText
+                    : Colors.dark.textDisabled
+                }
               />
             </Pressable>
           </View>
@@ -542,7 +722,10 @@ export default function MatchingScreen() {
       <View
         style={[
           styles.inner,
-          { paddingTop: headerHeight + Spacing.xl, paddingBottom: tabBarHeight + Spacing.xl },
+          {
+            paddingTop: headerHeight + Spacing.xl,
+            paddingBottom: tabBarHeight + Spacing.xl,
+          },
         ]}
       >
         {/* ── BOŞ DURUM ── */}
@@ -562,12 +745,25 @@ export default function MatchingScreen() {
 
             <View style={styles.infoGrid}>
               {[
-                { icon: "shield",   label: isTr ? "Kimlik gizli"      : "Identity hidden" },
-                { icon: "users",    label: isTr ? "Anonim eşleşme"    : "Anonymous match" },
-                { icon: "trash-2",  label: isTr ? "Veri silinir"      : "Data deleted" },
+                {
+                  icon: "shield",
+                  label: isTr ? "Kimlik gizli" : "Identity hidden",
+                },
+                {
+                  icon: "users",
+                  label: isTr ? "Anonim eşleşme" : "Anonymous match",
+                },
+                {
+                  icon: "trash-2",
+                  label: isTr ? "Veri silinir" : "Data deleted",
+                },
               ].map(({ icon, label }, i) => (
                 <View key={i} style={styles.infoItem}>
-                  <Feather name={icon as any} size={16} color={Colors.dark.primary} />
+                  <Feather
+                    name={icon as any}
+                    size={16}
+                    color={Colors.dark.primary}
+                  />
                   <ThemedText style={styles.infoLabel}>{label}</ThemedText>
                 </View>
               ))}
@@ -575,9 +771,16 @@ export default function MatchingScreen() {
 
             <Pressable
               onPress={handleStart}
-              style={({ pressed }) => [styles.primaryBtn, pressed && styles.btnPressed]}
+              style={({ pressed }) => [
+                styles.primaryBtn,
+                pressed && styles.btnPressed,
+              ]}
             >
-              <Feather name="shuffle" size={18} color={Colors.dark.buttonText} />
+              <Feather
+                name="shuffle"
+                size={18}
+                color={Colors.dark.buttonText}
+              />
               <ThemedText style={styles.primaryBtnText}>
                 {isTr ? "Eşleşme Başlat" : "Start Matching"}
               </ThemedText>
@@ -589,8 +792,8 @@ export default function MatchingScreen() {
         {status === "searching" && (
           <View style={styles.card}>
             <View style={styles.radarContainer}>
-              <RadarRing delay={0}    disabled={lowPowerMode} />
-              <RadarRing delay={550}  disabled={lowPowerMode} />
+              <RadarRing delay={0} disabled={lowPowerMode} />
+              <RadarRing delay={550} disabled={lowPowerMode} />
               <RadarRing delay={1100} disabled={lowPowerMode} />
               <RadarRing delay={1650} disabled={lowPowerMode} />
               <View style={styles.radarCenter}>
@@ -605,12 +808,17 @@ export default function MatchingScreen() {
               <ThemedText style={styles.aliasTag}>{myAlias}</ThemedText>
             ) : null}
             <ThemedText style={styles.cardDesc}>
-              {isTr ? "Anonim bağlantılar taranıyor" : "Scanning anonymous connections"}
+              {isTr
+                ? "Anonim bağlantılar taranıyor"
+                : "Scanning anonymous connections"}
             </ThemedText>
 
             <Pressable
               onPress={handleCancel}
-              style={({ pressed }) => [styles.secondaryBtn, pressed && styles.btnPressed]}
+              style={({ pressed }) => [
+                styles.secondaryBtn,
+                pressed && styles.btnPressed,
+              ]}
             >
               <ThemedText style={styles.secondaryBtnText}>
                 {isTr ? "İptal" : "Cancel"}
@@ -624,8 +832,12 @@ export default function MatchingScreen() {
           <View style={styles.card}>
             <ThemedText style={styles.foundLabel}>
               {status === "waiting_partner"
-                ? (isTr ? "PARTNER BEKLENİYOR..." : "WAITING FOR PARTNER...")
-                : (isTr ? "EŞLEŞmE BULUNDU" : "MATCH FOUND")}
+                ? isTr
+                  ? "PARTNER BEKLENİYOR..."
+                  : "WAITING FOR PARTNER..."
+                : isTr
+                  ? "EŞLEŞmE BULUNDU"
+                  : "MATCH FOUND"}
             </ThemedText>
 
             <View style={styles.matchCard}>
@@ -634,7 +846,9 @@ export default function MatchingScreen() {
                   {matchInfo.partnerAlias[0].toUpperCase()}
                 </ThemedText>
               </View>
-              <ThemedText style={styles.matchAlias}>{matchInfo.partnerAlias}</ThemedText>
+              <ThemedText style={styles.matchAlias}>
+                {matchInfo.partnerAlias}
+              </ThemedText>
 
               <View style={styles.trustRow}>
                 <Feather name="star" size={12} color={Colors.dark.warning} />
@@ -650,15 +864,25 @@ export default function MatchingScreen() {
               <View style={styles.btnRow}>
                 <Pressable
                   onPress={handleDecline}
-                  style={({ pressed }) => [styles.declineBtn, pressed && styles.btnPressed]}
+                  style={({ pressed }) => [
+                    styles.declineBtn,
+                    pressed && styles.btnPressed,
+                  ]}
                 >
                   <Feather name="x" size={22} color={Colors.dark.error} />
                 </Pressable>
                 <Pressable
                   onPress={handleAccept}
-                  style={({ pressed }) => [styles.acceptBtn, pressed && styles.btnPressed]}
+                  style={({ pressed }) => [
+                    styles.acceptBtn,
+                    pressed && styles.btnPressed,
+                  ]}
                 >
-                  <Feather name="check" size={18} color={Colors.dark.buttonText} />
+                  <Feather
+                    name="check"
+                    size={18}
+                    color={Colors.dark.buttonText}
+                  />
                   <ThemedText style={styles.acceptBtnText}>
                     {isTr ? "Bağlan" : "Connect"}
                   </ThemedText>
@@ -677,30 +901,82 @@ export default function MatchingScreen() {
         {/* ── REDDEDİLDİ ── */}
         {status === "declined" && (
           <View style={styles.card}>
-            <View style={[styles.idleIcon, { backgroundColor: Colors.dark.error + "18" }]}>
+            <View
+              style={[
+                styles.idleIcon,
+                { backgroundColor: Colors.dark.error + "18" },
+              ]}
+            >
               <Feather name="x-circle" size={36} color={Colors.dark.error} />
             </View>
-            <ThemedText style={[styles.cardTitle, { color: Colors.dark.error }]}>
+            <ThemedText
+              style={[styles.cardTitle, { color: Colors.dark.error }]}
+            >
               {isTr ? "Reddedildi" : "Declined"}
             </ThemedText>
             <ThemedText style={styles.cardDesc}>
               {isTr ? "Eşleşme reddedildi." : "The match was declined."}
             </ThemedText>
+            <Pressable
+              onPress={() => setStatus("idle")}
+              style={({ pressed }) => [
+                styles.primaryBtn,
+                pressed && styles.btnPressed,
+              ]}
+            >
+              <Feather
+                name="shuffle"
+                size={18}
+                color={Colors.dark.buttonText}
+              />
+              <ThemedText style={styles.primaryBtnText}>
+                {isTr ? "Tekrar Dene" : "Try Again"}
+              </ThemedText>
+            </Pressable>
           </View>
         )}
 
         {/* ── PARTNER AYRILDI ── */}
         {status === "partner_left" && (
           <View style={styles.card}>
-            <View style={[styles.idleIcon, { backgroundColor: Colors.dark.warning + "18" }]}>
+            <View
+              style={[
+                styles.idleIcon,
+                { backgroundColor: Colors.dark.warning + "18" },
+              ]}
+            >
               <Feather name="user-x" size={36} color={Colors.dark.warning} />
             </View>
-            <ThemedText style={[styles.cardTitle, { color: Colors.dark.warning }]}>
+            <ThemedText
+              style={[styles.cardTitle, { color: Colors.dark.warning }]}
+            >
               {isTr ? "Partner Ayrıldı" : "Partner Left"}
             </ThemedText>
             <ThemedText style={styles.cardDesc}>
-              {isTr ? "Oturum sona erdi." : "The session has ended."}
+              {isTr
+                ? "Oturum sona erdi. Yeni bir eşleşme başlatabilirsiniz."
+                : "The session has ended. You can start a new match."}
             </ThemedText>
+            <Pressable
+              onPress={() => {
+                setStatus("idle");
+                setMatchInfo(null);
+                setChatItems([]);
+              }}
+              style={({ pressed }) => [
+                styles.primaryBtn,
+                pressed && styles.btnPressed,
+              ]}
+            >
+              <Feather
+                name="shuffle"
+                size={18}
+                color={Colors.dark.buttonText}
+              />
+              <ThemedText style={styles.primaryBtnText}>
+                {isTr ? "Yeni Eşleşme" : "New Match"}
+              </ThemedText>
+            </Pressable>
           </View>
         )}
       </View>

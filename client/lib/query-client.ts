@@ -21,16 +21,34 @@ export function setCustomServerUrl(url: string | null): void {
   cachedCustomServerUrl = url || null;
 }
 
+// Resmi sunucu URL — build zamanında EXPO_PUBLIC_SERVER_URL ile ayarlanır
+const OFFICIAL_SERVER_URL =
+  process.env.EXPO_PUBLIC_SERVER_URL ||
+  (process.env.EXPO_PUBLIC_DOMAIN
+    ? `https://${process.env.EXPO_PUBLIC_DOMAIN}`
+    : null);
+
+/**
+ * Build zamanında yapılandırılmış resmi sunucu URL'sini döndürür.
+ * Yapılandırılmamışsa null döner — UI bunu "kendi sunucunuzu kurun" mesajı için kullanır.
+ */
+export function getOfficialServerUrl(): string | null {
+  return OFFICIAL_SERVER_URL || null;
+}
+
 export function getApiUrl(): string {
   if (cachedCustomServerUrl && cachedCustomServerUrl.trim()) {
     return cachedCustomServerUrl.trim().replace(/\/$/, "") + "/";
   }
 
-  if (process.env.EXPO_PUBLIC_DOMAIN) {
-    return `https://${process.env.EXPO_PUBLIC_DOMAIN}/`;
+  if (OFFICIAL_SERVER_URL) {
+    return OFFICIAL_SERVER_URL.replace(/\/$/, "") + "/";
   }
 
-  // Lokal geliştirme ortamı — sunucu varsayılan olarak 5000 portunda
+  // Resmi sunucu yapılandırılmamış — tarayıcıdan erişiliyorsa origin kullan (LAN erişimi için)
+  if (typeof window !== "undefined" && window.location?.origin) {
+    return window.location.origin + "/";
+  }
   return "http://localhost:5000/";
 }
 
@@ -39,6 +57,19 @@ async function throwIfResNotOk(res: Response) {
     const text = (await res.text()) || res.statusText;
     throw new Error(`${res.status}: ${text}`);
   }
+}
+
+// Tünel servislerinin bypass sayfasını atlamak için ek header
+export function getTunnelBypassHeaders(url?: string): Record<string, string> {
+  const target = url || getApiUrl();
+  if (
+    target.includes(".loca.lt") ||
+    target.includes("ngrok") ||
+    target.includes("tunnel")
+  ) {
+    return { "bypass-tunnel-reminder": "true", "User-Agent": "CipherNode/1.0" };
+  }
+  return {};
 }
 
 export async function apiRequest(
@@ -51,7 +82,10 @@ export async function apiRequest(
 
   const res = await fetch(url, {
     method,
-    headers: data ? { "Content-Type": "application/json" } : {},
+    headers: {
+      ...(data ? { "Content-Type": "application/json" } : {}),
+      ...getTunnelBypassHeaders(),
+    },
     body: data ? JSON.stringify(data) : undefined,
     credentials: "include",
   });

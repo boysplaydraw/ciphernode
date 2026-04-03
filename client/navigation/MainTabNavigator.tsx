@@ -6,7 +6,6 @@ import { Platform, StyleSheet } from "react-native";
 import { getFocusedRouteNameFromRoute } from "@react-navigation/native";
 import ChatsStackNavigator from "@/navigation/ChatsStackNavigator";
 import ContactsScreen from "@/screens/ContactsScreen";
-import MatchingScreen from "@/screens/MatchingScreen";
 import SettingsStackNavigator from "@/navigation/SettingsStackNavigator";
 import { Colors, Spacing } from "@/constants/theme";
 import { useScreenOptions } from "@/hooks/useScreenOptions";
@@ -14,7 +13,14 @@ import { useLanguage } from "@/constants/language";
 
 function getTabBarVisibility(route: any): "none" | "flex" {
   const routeName = getFocusedRouteNameFromRoute(route) ?? "ChatsList";
-  const hideTabBarScreens = ["ChatThread", "ContactInfo", "GroupThread", "GroupInfo", "CreateGroup", "NewChat"];
+  const hideTabBarScreens = [
+    "ChatThread",
+    "ContactInfo",
+    "GroupThread",
+    "GroupInfo",
+    "CreateGroup",
+    "NewChat",
+  ];
   if (hideTabBarScreens.includes(routeName)) {
     return "none";
   }
@@ -24,7 +30,6 @@ function getTabBarVisibility(route: any): "none" | "flex" {
 export type MainTabParamList = {
   ChatsTab: undefined;
   ContactsTab: undefined;
-  MatchingTab: undefined;
   SettingsTab: undefined;
 };
 
@@ -44,7 +49,7 @@ export default function MainTabNavigator() {
           position: "absolute",
           backgroundColor: Platform.select({
             ios: "transparent",
-            android: Colors.dark.backgroundRoot,
+            default: Colors.dark.backgroundRoot,
           }),
           borderTopWidth: 1,
           borderTopColor: Colors.dark.border,
@@ -90,17 +95,6 @@ export default function MainTabNavigator() {
           headerShown: false,
           tabBarIcon: ({ color, size }) => (
             <Feather name="users" size={size} color={color} />
-          ),
-        }}
-      />
-      <Tab.Screen
-        name="MatchingTab"
-        component={MatchingScreen}
-        options={{
-          title: language === "tr" ? "Eşleşme" : "Matching",
-          headerShown: false,
-          tabBarIcon: ({ color, size }) => (
-            <Feather name="shuffle" size={size} color={color} />
           ),
         }}
       />

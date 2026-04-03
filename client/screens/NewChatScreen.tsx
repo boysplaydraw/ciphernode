@@ -60,11 +60,12 @@ export default function NewChatScreen() {
   const [refreshing, setRefreshing] = useState(false);
 
   const t = {
-    noContacts: language === "tr" ? "Henuz kisi yok" : "No contacts yet",
-    addContactFirst: language === "tr"
-      ? "Sohbet baslatmak icin once bir kisi ekleyin"
-      : "Add a contact first to start chatting",
-    addContact: language === "tr" ? "Kisi Ekle" : "Add Contact",
+    noContacts: language === "tr" ? "Henüz kişi yok" : "No contacts yet",
+    addContactFirst:
+      language === "tr"
+        ? "Sohbet başlatmak için önce bir kişi ekleyin"
+        : "Add a contact first to start chatting",
+    addContact: language === "tr" ? "Kişi Ekle" : "Add Contact",
   };
 
   const loadContacts = useCallback(async () => {
@@ -75,7 +76,7 @@ export default function NewChatScreen() {
   useFocusEffect(
     useCallback(() => {
       loadContacts();
-    }, [loadContacts])
+    }, [loadContacts]),
   );
 
   const onRefresh = useCallback(async () => {
@@ -96,10 +97,7 @@ export default function NewChatScreen() {
     return (
       <ThemedView style={styles.container}>
         <View
-          style={[
-            styles.emptyState,
-            { paddingTop: headerHeight + Spacing.xl },
-          ]}
+          style={[styles.emptyState, { paddingTop: headerHeight + Spacing.xl }]}
         >
           <View style={styles.emptyIcon}>
             <Feather name="users" size={64} color={Colors.dark.textSecondary} />
@@ -115,7 +113,11 @@ export default function NewChatScreen() {
               pressed && styles.addButtonPressed,
             ]}
           >
-            <Feather name="user-plus" size={18} color={Colors.dark.buttonText} />
+            <Feather
+              name="user-plus"
+              size={18}
+              color={Colors.dark.buttonText}
+            />
             <ThemedText style={styles.addButtonText}>{t.addContact}</ThemedText>
           </Pressable>
         </View>

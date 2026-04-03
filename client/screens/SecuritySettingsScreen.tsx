@@ -30,29 +30,50 @@ export default function SecuritySettingsScreen() {
   const [showFingerprint, setShowFingerprint] = useState(false);
 
   const t = {
-    encryptionStatus: language === "tr" ? "Şifreleme Durumu" : "Encryption Status",
-    e2eEncrypted: language === "tr" ? "Uçtan Uca Şifreli" : "End-to-End Encrypted",
-    allMessagesSecure: language === "tr" ? "Tüm mesajlar güvenli" : "All messages are secured",
+    encryptionStatus:
+      language === "tr" ? "Şifreleme Durumu" : "Encryption Status",
+    e2eEncrypted:
+      language === "tr" ? "Uçtan Uca Şifreli" : "End-to-End Encrypted",
+    allMessagesSecure:
+      language === "tr" ? "Tüm mesajlar güvenli" : "All messages are secured",
     yourIdentity: language === "tr" ? "Kimliğiniz" : "Your Identity",
     yourId: language === "tr" ? "ID'niz" : "Your ID",
     fingerprint: language === "tr" ? "Parmak İzi" : "Fingerprint",
-    showFingerprint: language === "tr" ? "Parmak İzini Göster" : "Show Fingerprint",
-    hideFingerprint: language === "tr" ? "Parmak İzini Gizle" : "Hide Fingerprint",
+    showFingerprint:
+      language === "tr" ? "Parmak İzini Göster" : "Show Fingerprint",
+    hideFingerprint:
+      language === "tr" ? "Parmak İzini Gizle" : "Hide Fingerprint",
     keyManagement: language === "tr" ? "Anahtar Yönetimi" : "Key Management",
-    exportPublicKey: language === "tr" ? "Genel Anahtarı Dışa Aktar" : "Export Public Key",
-    exportPublicKeyDesc: language === "tr" ? "Genel anahtarınızı panoya kopyalayın" : "Copy your public key to clipboard",
-    regenerateKeys: language === "tr" ? "Anahtarları Yeniden Oluştur" : "Regenerate Keys",
-    regenerateKeysDesc: language === "tr" ? "Yeni bir kimlik oluşturun (tüm veriler silinir)" : "Create a new identity (deletes all data)",
+    exportPublicKey:
+      language === "tr" ? "Genel Anahtarı Dışa Aktar" : "Export Public Key",
+    exportPublicKeyDesc:
+      language === "tr"
+        ? "Genel anahtarınızı panoya kopyalayın"
+        : "Copy your public key to clipboard",
+    regenerateKeys:
+      language === "tr" ? "Anahtarları Yeniden Oluştur" : "Regenerate Keys",
+    regenerateKeysDesc:
+      language === "tr"
+        ? "Yeni bir kimlik oluşturun (tüm veriler silinir)"
+        : "Create a new identity (deletes all data)",
     copied: language === "tr" ? "Kopyalandı" : "Copied",
-    publicKeyCopied: language === "tr" ? "Genel anahtarınız panoya kopyalandı" : "Your public key has been copied to clipboard",
-    regenerateTitle: language === "tr" ? "Anahtarları Yeniden Oluştur" : "Regenerate Keys",
-    regenerateWarning: language === "tr" 
-      ? "Bu yeni bir kimlik oluşturacak ve tüm kişilerinizi ve mesajlarınızı silecek. Bu işlem geri alınamaz.\n\nDevam etmek istediğinizden emin misiniz?"
-      : "This will create a new identity and delete all your contacts and messages. This action cannot be undone.\n\nAre you sure you want to continue?",
+    publicKeyCopied:
+      language === "tr"
+        ? "Genel anahtarınız panoya kopyalandı"
+        : "Your public key has been copied to clipboard",
+    regenerateTitle:
+      language === "tr" ? "Anahtarları Yeniden Oluştur" : "Regenerate Keys",
+    regenerateWarning:
+      language === "tr"
+        ? "Bu yeni bir kimlik oluşturacak ve tüm kişilerinizi ve mesajlarınızı silecek. Bu işlem geri alınamaz.\n\nDevam etmek istediğinizden emin misiniz?"
+        : "This will create a new identity and delete all your contacts and messages. This action cannot be undone.\n\nAre you sure you want to continue?",
     cancel: language === "tr" ? "İptal" : "Cancel",
     regenerate: language === "tr" ? "Yeniden Oluştur" : "Regenerate",
     success: language === "tr" ? "Başarılı" : "Success",
-    newIdentityGenerated: language === "tr" ? "Yeni kimlik oluşturuldu" : "New identity has been generated",
+    newIdentityGenerated:
+      language === "tr"
+        ? "Yeni kimlik oluşturuldu"
+        : "New identity has been generated",
   };
 
   const handleExportPublicKey = async () => {
@@ -66,25 +87,21 @@ export default function SecuritySettingsScreen() {
   };
 
   const handleRegenerateKeys = () => {
-    Alert.alert(
-      t.regenerateTitle,
-      t.regenerateWarning,
-      [
-        { text: t.cancel, style: "cancel" },
-        {
-          text: t.regenerate,
-          style: "destructive",
-          onPress: async () => {
-            await clearAllData();
-            await regenerate();
-            if (Platform.OS !== "web") {
-              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-            }
-            Alert.alert(t.success, t.newIdentityGenerated);
-          },
+    Alert.alert(t.regenerateTitle, t.regenerateWarning, [
+      { text: t.cancel, style: "cancel" },
+      {
+        text: t.regenerate,
+        style: "destructive",
+        onPress: async () => {
+          await clearAllData();
+          await regenerate();
+          if (Platform.OS !== "web") {
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+          }
+          Alert.alert(t.success, t.newIdentityGenerated);
         },
-      ]
-    );
+      },
+    ]);
   };
 
   const formatFingerprint = (fp: string) => {
@@ -103,14 +120,18 @@ export default function SecuritySettingsScreen() {
         ]}
       >
         <View style={styles.section}>
-          <ThemedText style={styles.sectionTitle}>{t.encryptionStatus}</ThemedText>
+          <ThemedText style={styles.sectionTitle}>
+            {t.encryptionStatus}
+          </ThemedText>
           <View style={styles.statusCard}>
             <View style={styles.statusHeader}>
               <View style={styles.statusIcon}>
                 <Feather name="shield" size={24} color={Colors.dark.success} />
               </View>
               <View>
-                <ThemedText style={styles.statusTitle}>{t.e2eEncrypted}</ThemedText>
+                <ThemedText style={styles.statusTitle}>
+                  {t.e2eEncrypted}
+                </ThemedText>
                 <ThemedText style={styles.statusSubtitle}>
                   AES-256 + RSA (OpenPGP)
                 </ThemedText>
@@ -160,7 +181,9 @@ export default function SecuritySettingsScreen() {
         <View style={styles.section}>
           <ThemedText style={styles.sectionTitle}>{t.keyManagement}</ThemedText>
           <View style={styles.dangerCard}>
-            <ThemedText style={styles.dangerTitle}>{t.regenerateKeys}</ThemedText>
+            <ThemedText style={styles.dangerTitle}>
+              {t.regenerateKeys}
+            </ThemedText>
             <ThemedText style={styles.dangerText}>
               {t.regenerateKeysDesc}
             </ThemedText>
@@ -182,7 +205,7 @@ export default function SecuritySettingsScreen() {
         <View style={styles.infoSection}>
           <Feather name="info" size={18} color={Colors.dark.secondary} />
           <ThemedText style={styles.infoText}>
-            {language === "tr" 
+            {language === "tr"
               ? "Özel anahtarınız asla cihazınızdan ayrılmaz. Sadece siz size gönderilen mesajları deşifre edebilirsiniz."
               : "Your private key never leaves your device. Only you can decrypt messages sent to you."}
           </ThemedText>

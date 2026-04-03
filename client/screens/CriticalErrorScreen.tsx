@@ -10,7 +10,10 @@ interface CriticalErrorScreenProps {
   onRetry: () => void;
 }
 
-export default function CriticalErrorScreen({ error, onRetry }: CriticalErrorScreenProps) {
+export default function CriticalErrorScreen({
+  error,
+  onRetry,
+}: CriticalErrorScreenProps) {
   const { language } = useLanguage();
   const isTr = language === "tr";
 
@@ -47,9 +50,17 @@ export default function CriticalErrorScreen({ error, onRetry }: CriticalErrorScr
 
         <Pressable
           onPress={onRetry}
-          style={({ pressed }) => [styles.retryButton, pressed && styles.retryButtonPressed]}
+          style={({ pressed }) => [
+            styles.retryButton,
+            pressed && styles.retryButtonPressed,
+          ]}
         >
-          <Feather name="refresh-cw" size={18} color={Colors.dark.buttonText} style={styles.retryIcon} />
+          <Feather
+            name="refresh-cw"
+            size={18}
+            color={Colors.dark.buttonText}
+            style={styles.retryIcon}
+          />
           <ThemedText style={styles.retryText}>
             {isTr ? "Yeniden Dene" : "Retry"}
           </ThemedText>

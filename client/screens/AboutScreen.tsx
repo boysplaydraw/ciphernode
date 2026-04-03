@@ -1,11 +1,5 @@
 import React from "react";
-import {
-  View,
-  ScrollView,
-  StyleSheet,
-  Pressable,
-  Linking,
-} from "react-native";
+import { View, ScrollView, StyleSheet, Pressable, Linking } from "react-native";
 import { useHeaderHeight } from "@react-navigation/elements";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
@@ -31,7 +25,11 @@ function LinkRow({ icon, title, url }: LinkRowProps) {
     >
       <Feather name={icon as any} size={20} color={Colors.dark.primary} />
       <ThemedText style={styles.linkTitle}>{title}</ThemedText>
-      <Feather name="external-link" size={16} color={Colors.dark.textSecondary} />
+      <Feather
+        name="external-link"
+        size={16}
+        color={Colors.dark.textSecondary}
+      />
     </Pressable>
   );
 }
@@ -43,23 +41,32 @@ export default function AboutScreen() {
 
   const t = {
     version: language === "tr" ? "Sürüm" : "Version",
-    description: language === "tr" 
-      ? "Hesap, izleme ve veri toplama olmadan gizlilik öncelikli, uçtan uca şifreli mesajlaşma."
-      : "Privacy-first, end-to-end encrypted messaging with no accounts, no tracking, and no data collection.",
+    description:
+      language === "tr"
+        ? "Hesap, izleme ve veri toplama olmadan gizlilik öncelikli, uçtan uca şifreli mesajlaşma."
+        : "Privacy-first, end-to-end encrypted messaging with no accounts, no tracking, and no data collection.",
     features: language === "tr" ? "Özellikler" : "Features",
-    noAccountRequired: language === "tr" ? "Hesap gerekmez" : "No account required",
-    e2eEncryption: language === "tr" ? "Uçtan uca şifreleme (OpenPGP)" : "End-to-end encryption (OpenPGP)",
+    noAccountRequired:
+      language === "tr" ? "Hesap gerekmez" : "No account required",
+    e2eEncryption:
+      language === "tr"
+        ? "Uçtan uca şifreleme (OpenPGP)"
+        : "End-to-end encryption (OpenPGP)",
     p2pRelay: language === "tr" ? "Yedek ile P2P" : "P2P with relay fallback",
-    noLogServers: language === "tr" ? "Kayıt tutmayan sunucular" : "No-log relay servers",
-    selfHostable: language === "tr" ? "Kendi barındırılabilir" : "Self-hostable",
-    openSource: language === "tr" ? "Açık kaynak (GPLv3)" : "Open source (GPLv3)",
+    noLogServers:
+      language === "tr" ? "Kayıt tutmayan sunucular" : "No-log relay servers",
+    selfHostable:
+      language === "tr" ? "Kendi barındırılabilir" : "Self-hostable",
+    openSource:
+      language === "tr" ? "Açık kaynak (GPLv3)" : "Open source (GPLv3)",
     links: language === "tr" ? "Bağlantılar" : "Links",
     sourceCode: language === "tr" ? "Kaynak Kodu" : "Source Code",
     documentation: language === "tr" ? "Dokümantasyon" : "Documentation",
     reportIssue: language === "tr" ? "Sorun Bildir" : "Report Issue",
     legal: language === "tr" ? "Yasal" : "Legal",
     privacyPolicy: language === "tr" ? "Gizlilik Politikası" : "Privacy Policy",
-    termsOfService: language === "tr" ? "Kullanım Şartları" : "Terms of Service",
+    termsOfService:
+      language === "tr" ? "Kullanım Şartları" : "Terms of Service",
     license: language === "tr" ? "Lisans" : "License",
   };
 
@@ -83,9 +90,7 @@ export default function AboutScreen() {
         </View>
 
         <View style={styles.descSection}>
-          <ThemedText style={styles.description}>
-            {t.description}
-          </ThemedText>
+          <ThemedText style={styles.description}>{t.description}</ThemedText>
         </View>
 
         <View style={styles.section}>
@@ -93,11 +98,15 @@ export default function AboutScreen() {
           <View style={styles.featureList}>
             <View style={styles.featureItem}>
               <Feather name="check" size={16} color={Colors.dark.success} />
-              <ThemedText style={styles.featureText}>{t.noAccountRequired}</ThemedText>
+              <ThemedText style={styles.featureText}>
+                {t.noAccountRequired}
+              </ThemedText>
             </View>
             <View style={styles.featureItem}>
               <Feather name="check" size={16} color={Colors.dark.success} />
-              <ThemedText style={styles.featureText}>{t.e2eEncryption}</ThemedText>
+              <ThemedText style={styles.featureText}>
+                {t.e2eEncryption}
+              </ThemedText>
             </View>
             <View style={styles.featureItem}>
               <Feather name="check" size={16} color={Colors.dark.success} />
@@ -105,11 +114,15 @@ export default function AboutScreen() {
             </View>
             <View style={styles.featureItem}>
               <Feather name="check" size={16} color={Colors.dark.success} />
-              <ThemedText style={styles.featureText}>{t.noLogServers}</ThemedText>
+              <ThemedText style={styles.featureText}>
+                {t.noLogServers}
+              </ThemedText>
             </View>
             <View style={styles.featureItem}>
               <Feather name="check" size={16} color={Colors.dark.success} />
-              <ThemedText style={styles.featureText}>{t.selfHostable}</ThemedText>
+              <ThemedText style={styles.featureText}>
+                {t.selfHostable}
+              </ThemedText>
             </View>
             <View style={styles.featureItem}>
               <Feather name="check" size={16} color={Colors.dark.success} />

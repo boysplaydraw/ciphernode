@@ -13,6 +13,7 @@ import {
 import { useNavigation } from "@react-navigation/native";
 import { useHeaderHeight } from "@react-navigation/elements";
 import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { Feather } from "@expo/vector-icons";
 import * as LocalAuthentication from "expo-local-authentication";
@@ -34,6 +35,7 @@ import {
 } from "@/lib/storage";
 import { exportIdentityBackup, importIdentityFromBackup } from "@/lib/crypto";
 import * as Clipboard from "expo-clipboard";
+import * as ScreenCapture from "expo-screen-capture";
 import { reconnectWithTor, setStegMode, setP2POnlyMode } from "@/lib/socket";
 import {
   SUPPORTED_LANGUAGES,
@@ -130,6 +132,11 @@ export default function SettingsScreen() {
   const navigation = useNavigation<NavigationProp>();
   const headerHeight = useHeaderHeight();
   const tabBarHeight = useBottomTabBarHeight();
+  const insets = useSafeAreaInsets();
+  // Android'de headerTransparent:true ile useHeaderHeight status bar'ı dahil etmeyebilir
+  const safeTopOffset = Platform.OS === "android"
+    ? Math.max(headerHeight, insets.top + 56)
+    : headerHeight;
   const { identity, setDisplayName } = useIdentity();
   const { language: currentLanguage, setLanguage: setContextLanguage } =
     useLanguage();
@@ -248,6 +255,17 @@ export default function SettingsScreen() {
         }
       }
 
+      // Ekran koruması: screenshot/kayıt engelle veya serbest bırak
+      if (key === "screenProtection") {
+        try {
+          if (value) {
+            await ScreenCapture.preventScreenCaptureAsync();
+          } else {
+            await ScreenCapture.allowScreenCaptureAsync();
+          }
+        } catch {}
+      }
+
       // Ghost mode: socket'e bildir
       if (key === "ghostMode") {
         setGhostMode(value);
@@ -297,12 +315,12 @@ export default function SettingsScreen() {
   );
 
   const timerLabels: Record<number, string> = {
-    0: currentLanguage === "tr" ? "Kapali" : "Off",
+    0: currentLanguage === "tr" ? "Kapalı" : "Off",
     30: currentLanguage === "tr" ? "30 saniye" : "30 seconds",
     60: currentLanguage === "tr" ? "1 dakika" : "1 minute",
     300: currentLanguage === "tr" ? "5 dakika" : "5 minutes",
     3600: currentLanguage === "tr" ? "1 saat" : "1 hour",
-    86400: currentLanguage === "tr" ? "1 gun" : "1 day",
+    86400: currentLanguage === "tr" ? "1 gün" : "1 day",
   };
 
   const timerOptions = [0, 30, 60, 300, 3600, 86400];
@@ -525,9 +543,9 @@ export default function SettingsScreen() {
       }
     }
     Alert.alert(
-      currentLanguage === "tr" ? "Gecersiz Format" : "Invalid Format",
+      currentLanguage === "tr" ? "Geçersiz Format" : "Invalid Format",
       currentLanguage === "tr"
-        ? "Lutfen host:port formatinda girin (ornek: 127.0.0.1:9050)"
+        ? "Lütfen host:port formatında girin (örnek: 127.0.0.1:9050)"
         : "Please enter in host:port format (example: 127.0.0.1:9050)",
     );
   };
@@ -535,13 +553,13 @@ export default function SettingsScreen() {
   const getTorStatusText = () => {
     switch (torSettings.connectionStatus) {
       case "connected":
-        return currentLanguage === "tr" ? "Bagli" : "Connected";
+        return currentLanguage === "tr" ? "Bağlı" : "Connected";
       case "connecting":
-        return currentLanguage === "tr" ? "Baglaniyor..." : "Connecting...";
+        return currentLanguage === "tr" ? "Bağlanıyor..." : "Connecting...";
       case "error":
         return currentLanguage === "tr" ? "Hata" : "Error";
       default:
-        return currentLanguage === "tr" ? "Bagli Degil" : "Disconnected";
+        return currentLanguage === "tr" ? "Bağlı Değil" : "Disconnected";
     }
   };
 
@@ -657,7 +675,7 @@ export default function SettingsScreen() {
         contentContainerStyle={[
           styles.content,
           {
-            paddingTop: headerHeight + Spacing.xl,
+            paddingTop: safeTopOffset + Spacing.xl,
             paddingBottom: tabBarHeight + Spacing.xl,
           },
         ]}
@@ -678,7 +696,7 @@ export default function SettingsScreen() {
           <View style={styles.sectionContent}>
             <View style={styles.inputRow}>
               <ThemedText style={styles.inputLabel}>
-                {currentLanguage === "tr" ? "Gosterim Adi" : "Display Name"}
+                {currentLanguage === "tr" ? "Gösterim Adı" : "Display Name"}
               </ThemedText>
               <TextInput
                 style={styles.input}
@@ -686,7 +704,7 @@ export default function SettingsScreen() {
                 onChangeText={setDisplayNameInput}
                 onBlur={handleDisplayNameChange}
                 placeholder={
-                  currentLanguage === "tr" ? "Opsiyonel ad" : "Optional name"
+                  currentLanguage === "tr" ? "Opsiyonel Ad" : "Optional name"
                 }
                 placeholderTextColor={Colors.dark.textDisabled}
                 maxLength={30}
@@ -746,12 +764,12 @@ export default function SettingsScreen() {
               icon="clock"
               title={
                 currentLanguage === "tr"
-                  ? "Varsayilan Mesaj Zamanlayicisi"
+                  ? "Varsayılan Mesaj Zamanlayıcısı"
                   : "Default Message Timer"
               }
               subtitle={
                 timerLabels[defaultTimer] ||
-                (currentLanguage === "tr" ? "Kapali" : "Off")
+                (currentLanguage === "tr" ? "Kapalı" : "Off")
               }
               onPress={() => setShowTimerModal(true)}
             />
@@ -759,12 +777,12 @@ export default function SettingsScreen() {
               icon="eye-off"
               title={
                 currentLanguage === "tr"
-                  ? "Ekran Korumasi"
+                  ? "Ekran Koruması"
                   : "Screen Protection"
               }
               subtitle={
                 currentLanguage === "tr"
-                  ? "Ekran goruntusu ve kaydi engelle"
+                  ? "Ekran görüntüsü ve kaydı engelle"
                   : "Prevent screenshots and screen recording"
               }
               rightElement={
@@ -1117,7 +1135,7 @@ export default function SettingsScreen() {
             <View style={styles.modalContent}>
               <ThemedText style={styles.modalTitle}>
                 {currentLanguage === "tr"
-                  ? "Mesaj Zamanlayicisini Ayarla"
+                  ? "Mesaj Zamanlayıcısını Ayarla"
                   : "Set Message Timer"}
               </ThemedText>
               {timerOptions.map((timer) => (

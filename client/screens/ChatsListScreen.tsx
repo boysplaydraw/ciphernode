@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from "react";
+import React, { useCallback, useState, useEffect } from "react";
 import {
   View,
   FlatList,
@@ -34,8 +34,13 @@ import type { Contact } from "@/lib/crypto";
 import type { ChatsStackParamList } from "@/navigation/ChatsStackNavigator";
 import ConnectionStatus from "@/components/ConnectionStatus";
 import { useLanguage } from "@/constants/language";
+import { getApiUrl, getOfficialServerUrl } from "@/lib/query-client";
+import { onStatusChange } from "@/lib/socket";
 
-type NavigationProp = NativeStackNavigationProp<ChatsStackParamList, "ChatsList">;
+type NavigationProp = NativeStackNavigationProp<
+  ChatsStackParamList,
+  "ChatsList"
+>;
 
 type ListItem =
   | (Chat & { type: "chat"; displayName: string })
@@ -62,7 +67,10 @@ function ChatItem({ item, onPress, onLongPress }: ChatItemProps) {
     const days = Math.floor(diff / (1000 * 60 * 60 * 24));
 
     if (days === 0) {
-      return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+      return date.toLocaleTimeString([], {
+        hour: "2-digit",
+        minute: "2-digit",
+      });
     } else if (days === 1) {
       return "Yesterday";
     } else if (days < 7) {
@@ -75,7 +83,10 @@ function ChatItem({ item, onPress, onLongPress }: ChatItemProps) {
     <Pressable
       onPress={onPress}
       onLongPress={onLongPress}
-      style={({ pressed }) => [styles.chatItem, pressed && styles.chatItemPressed]}
+      style={({ pressed }) => [
+        styles.chatItem,
+        pressed && styles.chatItemPressed,
+      ]}
     >
       <View style={styles.avatarContainer}>
         <View style={styles.avatar}>
@@ -92,18 +103,25 @@ function ChatItem({ item, onPress, onLongPress }: ChatItemProps) {
             {displayName}
           </ThemedText>
           <ThemedText style={styles.timestamp}>
-            {lastMessage ? formatTime(lastMessage.timestamp) : hasNoMessages ? formatTime(item.lastMessageAt) : ""}
+            {lastMessage
+              ? formatTime(lastMessage.timestamp)
+              : hasNoMessages
+                ? formatTime(item.lastMessageAt)
+                : ""}
           </ThemedText>
         </View>
         <View style={styles.chatPreview}>
           <ThemedText style={styles.messagePreview} numberOfLines={1}>
             {item.type === "group" && lastMessage
               ? `${lastMessage.senderId.split("-")[0]}: ${lastMessage.content}`
-              : lastMessage?.content || (hasNoMessages ? "Tap to start chatting" : "No messages yet")}
+              : lastMessage?.content ||
+                (hasNoMessages ? "Tap to start chatting" : "No messages yet")}
           </ThemedText>
           {item.unreadCount > 0 ? (
             <View style={styles.unreadBadge}>
-              <ThemedText style={styles.unreadCount}>{item.unreadCount}</ThemedText>
+              <ThemedText style={styles.unreadCount}>
+                {item.unreadCount}
+              </ThemedText>
             </View>
           ) : null}
         </View>
@@ -113,51 +131,27 @@ function ChatItem({ item, onPress, onLongPress }: ChatItemProps) {
 }
 
 function EmptyState() {
-  const navigation = useNavigation<NavigationProp>();
   const { language } = useLanguage();
 
   const t = {
     noChatsYet: language === "tr" ? "Henüz sohbet yok" : "No chats yet",
-    addContactOrGroup: language === "tr" 
-      ? "Güvenli mesajlaşmaya başlamak için kişi ekleyin veya grup oluşturun" 
-      : "Add a contact or create a group to start messaging securely",
-    addContact: language === "tr" ? "Kişi Ekle" : "Add Contact",
-    createGroup: language === "tr" ? "Grup Oluştur" : "Create Group",
+    hint:
+      language === "tr"
+        ? "Kişiler sekmesinden kişi ekleyin veya grup oluşturun"
+        : "Add contacts or create a group from the Contacts tab",
   };
 
   return (
     <View style={styles.emptyState}>
       <View style={styles.emptyIcon}>
-        <Feather name="message-circle" size={64} color={Colors.dark.textSecondary} />
+        <Feather
+          name="message-circle"
+          size={64}
+          color={Colors.dark.textSecondary}
+        />
       </View>
       <ThemedText style={styles.emptyTitle}>{t.noChatsYet}</ThemedText>
-      <ThemedText style={styles.emptySubtitle}>
-        {t.addContactOrGroup}
-      </ThemedText>
-      <View style={styles.emptyButtons}>
-        <Pressable
-          style={({ pressed }) => [
-            styles.emptyButton,
-            pressed && styles.emptyButtonPressed,
-          ]}
-          onPress={() => {
-            navigation.getParent()?.navigate("AddContactTab" as never);
-          }}
-        >
-          <Feather name="user-plus" size={18} color={Colors.dark.buttonText} />
-          <ThemedText style={styles.emptyButtonText}>{t.addContact}</ThemedText>
-        </Pressable>
-        <Pressable
-          style={({ pressed }) => [
-            styles.emptyButtonSecondary,
-            pressed && styles.emptyButtonPressed,
-          ]}
-          onPress={() => navigation.navigate("CreateGroup")}
-        >
-          <Feather name="users" size={18} color={Colors.dark.primary} />
-          <ThemedText style={styles.emptyButtonTextSecondary}>{t.createGroup}</ThemedText>
-        </Pressable>
-      </View>
+      <ThemedText style={styles.emptySubtitle}>{t.hint}</ThemedText>
     </View>
   );
 }
@@ -171,30 +165,55 @@ export default function ChatsListScreen() {
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [actionSheetVisible, setActionSheetVisible] = useState(false);
-  const [actionSheetOptions, setActionSheetOptions] = useState<ActionSheetOption[]>([]);
+  const [actionSheetOptions, setActionSheetOptions] = useState<
+    ActionSheetOption[]
+  >([]);
   const [actionSheetTitle, setActionSheetTitle] = useState("");
   const [actionSheetMessage, setActionSheetMessage] = useState("");
-  const [deleteConfirmVisible, setDeleteConfirmVisible] = useState(false);
-  const [pendingDeleteItem, setPendingDeleteItem] = useState<ListItem | null>(null);
+  const [isDisconnected, setIsDisconnected] = useState(false);
+  const [noServerConfigured, setNoServerConfigured] = useState(false);
+
+  useEffect(() => {
+    // Native platformlarda localhost fallback'i tespit et
+    if (Platform.OS !== "web") {
+      const url = getApiUrl();
+      const isLocalhost = url.includes("localhost") || url.includes("127.0.0.1");
+      const hasOfficial = !!getOfficialServerUrl();
+      setNoServerConfigured(isLocalhost && !hasOfficial);
+    }
+
+    const unsub = onStatusChange((status) => {
+      if (status === "disconnected") setIsDisconnected(true);
+      else if (status === "registered" || status === "connected") setIsDisconnected(false);
+    });
+    return unsub;
+  }, []);
 
   const t = {
     archive: language === "tr" ? "Arşivle" : "Archive",
     delete: language === "tr" ? "Sil" : "Delete",
     cancel: language === "tr" ? "İptal" : "Cancel",
     deleteTitle: language === "tr" ? "Sil" : "Delete",
-    deleteConversation: language === "tr" ? "Bu sohbeti silmek istediğinizden emin misiniz?" : "Are you sure you want to delete this conversation?",
-    deleteGroup: language === "tr" ? "Bu grubu silmek istediğinizden emin misiniz?" : "Are you sure you want to delete this group?",
+    deleteConversation:
+      language === "tr"
+        ? "Bu sohbeti silmek istediğinizden emin misiniz?"
+        : "Are you sure you want to delete this conversation?",
+    deleteGroup:
+      language === "tr"
+        ? "Bu grubu silmek istediğinizden emin misiniz?"
+        : "Are you sure you want to delete this group?",
     chooseAction: language === "tr" ? "Bir işlem seçin" : "Choose an action",
     confirm: language === "tr" ? "Onayla" : "Confirm",
   };
 
   const loadData = useCallback(async () => {
-    const [chatsData, groupsData, contactsData, allChatsData] = await Promise.all([
-      getActiveChats(),
-      getActiveGroups(),
-      getContacts(),
-      getChats(),
-    ]);
+    const [chatsData, groupsData, contactsData, allChatsData] =
+      await Promise.all([
+        getActiveChats(),
+        getActiveGroups(),
+        getContacts(),
+        getChats(),
+      ]);
     setContacts(contactsData);
 
     const chatItems: ListItem[] = chatsData.map((chat) => ({
@@ -206,7 +225,7 @@ export default function ChatsListScreen() {
     }));
 
     const contactsWithoutChats = contactsData.filter(
-      (contact) => !allChatsData.some((chat) => chat.contactId === contact.id)
+      (contact) => !allChatsData.some((chat) => chat.contactId === contact.id),
     );
     const contactAsChats: ListItem[] = contactsWithoutChats.map((contact) => ({
       contactId: contact.id,
@@ -224,7 +243,7 @@ export default function ChatsListScreen() {
     }));
 
     const allItems = [...chatItems, ...contactAsChats, ...groupItems].sort(
-      (a, b) => b.lastMessageAt - a.lastMessageAt
+      (a, b) => b.lastMessageAt - a.lastMessageAt,
     );
 
     setItems(allItems);
@@ -233,7 +252,7 @@ export default function ChatsListScreen() {
   useFocusEffect(
     useCallback(() => {
       loadData();
-    }, [loadData])
+    }, [loadData]),
   );
 
   const onRefresh = useCallback(async () => {
@@ -241,18 +260,6 @@ export default function ChatsListScreen() {
     await loadData();
     setRefreshing(false);
   }, [loadData]);
-
-  const handleDeleteConfirm = async () => {
-    if (!pendingDeleteItem) return;
-    if (pendingDeleteItem.type === "chat") {
-      await deleteChat(pendingDeleteItem.contactId);
-    } else {
-      await deleteGroup(pendingDeleteItem.id);
-    }
-    setPendingDeleteItem(null);
-    setDeleteConfirmVisible(false);
-    loadData();
-  };
 
   const handleLongPress = (item: ListItem) => {
     if (Platform.OS !== "web") {
@@ -275,8 +282,23 @@ export default function ChatsListScreen() {
         text: t.delete,
         style: "destructive",
         onPress: () => {
-          setPendingDeleteItem(item);
-          setDeleteConfirmVisible(true);
+          const msg =
+            item.type === "chat" ? t.deleteConversation : t.deleteGroup;
+          Alert.alert(t.deleteTitle, msg, [
+            { text: t.cancel, style: "cancel" },
+            {
+              text: t.delete,
+              style: "destructive",
+              onPress: async () => {
+                if (item.type === "chat") {
+                  await deleteChat(item.contactId);
+                } else {
+                  await deleteGroup(item.id);
+                }
+                loadData();
+              },
+            },
+          ]);
         },
       },
       { text: t.cancel, style: "cancel", onPress: () => {} },
@@ -296,13 +318,23 @@ export default function ChatsListScreen() {
     }
   };
 
+  const handleNewChat = React.useCallback(
+    () => navigation.navigate("NewChat"),
+    [navigation],
+  );
+  const handleArchivedChats = React.useCallback(
+    () => navigation.navigate("ArchivedChats"),
+    [navigation],
+  );
+
   React.useLayoutEffect(() => {
     navigation.setOptions({
       headerLeft: () => <ConnectionStatus />,
       headerRight: () => (
         <View style={styles.headerRight}>
           <Pressable
-            onPress={() => navigation.navigate("NewChat")}
+            onPress={handleNewChat}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
             style={({ pressed }) => [
               styles.headerButton,
               pressed && styles.headerButtonPressed,
@@ -311,7 +343,8 @@ export default function ChatsListScreen() {
             <Feather name="edit" size={20} color={Colors.dark.primary} />
           </Pressable>
           <Pressable
-            onPress={() => navigation.navigate("ArchivedChats")}
+            onPress={handleArchivedChats}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
             style={({ pressed }) => [
               styles.headerButton,
               pressed && styles.headerButtonPressed,
@@ -319,22 +352,33 @@ export default function ChatsListScreen() {
           >
             <Feather name="archive" size={20} color={Colors.dark.text} />
           </Pressable>
-          <Pressable
-            onPress={() => navigation.navigate("CreateGroup")}
-            style={({ pressed }) => [
-              styles.headerButton,
-              pressed && styles.headerButtonPressed,
-            ]}
-          >
-            <Feather name="users" size={20} color={Colors.dark.text} />
-          </Pressable>
         </View>
       ),
     });
-  }, [navigation]);
+  }, [navigation, handleNewChat, handleArchivedChats]);
 
   return (
     <ThemedView style={styles.container}>
+      {/* Sunucu yapılandırılmamış uyarısı — native platformlarda göster */}
+      {noServerConfigured && (
+        <Pressable
+          style={styles.noBanner}
+          onPress={() => {
+            const parent = navigation.getParent();
+            if (parent) {
+              (parent as any).navigate("SettingsTab", { screen: "NetworkSettings" });
+            }
+          }}
+        >
+          <Feather name="alert-triangle" size={14} color="#FFB800" />
+          <ThemedText style={styles.noBannerText}>
+            {language === "tr"
+              ? "Sunucu adresi girilmedi. Bağlantı için Ayarlar → Ağ Ayarları'nı açın."
+              : "No server configured. Go to Settings → Network Settings to connect."}
+          </ThemedText>
+          <Feather name="chevron-right" size={14} color="#FFB800" />
+        </Pressable>
+      )}
       <FlatList
         data={items}
         keyExtractor={(item) =>
@@ -373,30 +417,6 @@ export default function ChatsListScreen() {
         options={actionSheetOptions}
       />
 
-      <ActionSheet
-        visible={deleteConfirmVisible}
-        onClose={() => {
-          setDeleteConfirmVisible(false);
-          setPendingDeleteItem(null);
-        }}
-        title={t.deleteTitle}
-        message={pendingDeleteItem?.type === "chat" ? t.deleteConversation : t.deleteGroup}
-        options={[
-          {
-            text: t.delete,
-            style: "destructive",
-            onPress: handleDeleteConfirm,
-          },
-          {
-            text: t.cancel,
-            style: "cancel",
-            onPress: () => {
-              setDeleteConfirmVisible(false);
-              setPendingDeleteItem(null);
-            },
-          },
-        ]}
-      />
     </ThemedView>
   );
 }
@@ -405,6 +425,21 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: Colors.dark.backgroundRoot,
+  },
+  noBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "rgba(255,184,0,0.1)",
+    borderBottomWidth: 1,
+    borderBottomColor: "rgba(255,184,0,0.3)",
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.sm,
+    columnGap: Spacing.sm,
+  },
+  noBannerText: {
+    flex: 1,
+    fontSize: 12,
+    color: "#FFB800",
   },
   headerRight: {
     flexDirection: "row",
@@ -508,45 +543,5 @@ const styles = StyleSheet.create({
     color: Colors.dark.textSecondary,
     textAlign: "center",
     marginBottom: Spacing["2xl"],
-  },
-  emptyButtons: {
-    gap: Spacing.md,
-    width: "100%",
-    maxWidth: 280,
-  },
-  emptyButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: Colors.dark.primary,
-    paddingHorizontal: Spacing.xl,
-    paddingVertical: Spacing.md,
-    borderRadius: BorderRadius.xs,
-    gap: Spacing.sm,
-  },
-  emptyButtonSecondary: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "transparent",
-    borderWidth: 1,
-    borderColor: Colors.dark.primary,
-    paddingHorizontal: Spacing.xl,
-    paddingVertical: Spacing.md,
-    borderRadius: BorderRadius.xs,
-    gap: Spacing.sm,
-  },
-  emptyButtonPressed: {
-    opacity: 0.8,
-  },
-  emptyButtonText: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: Colors.dark.buttonText,
-  },
-  emptyButtonTextSecondary: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: Colors.dark.primary,
   },
 });

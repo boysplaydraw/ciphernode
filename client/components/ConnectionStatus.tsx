@@ -4,7 +4,7 @@ import { Feather } from "@expo/vector-icons";
 import { Colors, Spacing } from "@/constants/theme";
 import { ThemedText } from "./ThemedText";
 import { getTorSettings, type TorSettings } from "@/lib/storage";
-import { onTorStatusChange, onStatusChange } from "@/lib/socket";
+import { onTorStatusChange, onStatusChange, isConnected } from "@/lib/socket";
 
 type ConnectionState = "p2p" | "relay" | "offline" | "tor" | "tor_connecting";
 
@@ -13,8 +13,14 @@ interface ConnectionStatusProps {
   showLabel?: boolean;
 }
 
-export default function ConnectionStatus({ state = "relay", showLabel = false }: ConnectionStatusProps) {
-  const [displayState, setDisplayState] = useState<ConnectionState>(state);
+export default function ConnectionStatus({
+  state = "relay",
+  showLabel = true,
+}: ConnectionStatusProps) {
+  // Başlangıç: socket bağlıysa relay, değilse offline
+  const [displayState, setDisplayState] = useState<ConnectionState>(
+    isConnected() ? "relay" : "offline",
+  );
 
   const updateDisplayState = useCallback((settings: TorSettings) => {
     if (settings.enabled) {
@@ -22,37 +28,34 @@ export default function ConnectionStatus({ state = "relay", showLabel = false }:
         setDisplayState("tor");
       } else if (settings.connectionStatus === "connecting") {
         setDisplayState("tor_connecting");
-      } else {
-        setDisplayState(state);
       }
-    } else {
-      setDisplayState(state);
     }
-  }, [state]);
+  }, []);
 
   useEffect(() => {
     getTorSettings().then(updateDisplayState);
-    
+
     const unsubTor = onTorStatusChange(updateDisplayState);
     const unsubStatus = onStatusChange((status) => {
       if (status === "tor_connected") {
         setDisplayState("tor");
       } else if (status === "tor_connecting") {
         setDisplayState("tor_connecting");
-      } else if (status === "disconnected") {
-        getTorSettings().then((settings) => {
-          if (!settings.enabled) {
-            setDisplayState("offline");
-          }
+      } else if (status === "registered") {
+        // Sunucuya başarıyla kayıt olundu → bağlı
+        getTorSettings().then((s) => {
+          if (!s.enabled) setDisplayState("relay");
         });
+      } else if (status === "disconnected") {
+        setDisplayState("offline");
       }
     });
-    
+
     return () => {
       unsubTor();
       unsubStatus();
     };
-  }, [state, updateDisplayState]);
+  }, [updateDisplayState]);
 
   const getColor = () => {
     switch (displayState) {
@@ -74,13 +77,13 @@ export default function ConnectionStatus({ state = "relay", showLabel = false }:
       case "p2p":
         return "P2P";
       case "relay":
-        return "Relay";
+        return "Bağlı";
       case "tor":
         return "Tor";
       case "tor_connecting":
         return "Tor...";
       case "offline":
-        return "Offline";
+        return "Bağlı Değil";
     }
   };
 
@@ -92,14 +95,18 @@ export default function ConnectionStatus({ state = "relay", showLabel = false }:
         <View style={styles.torIndicator}>
           <Feather name="shield" size={12} color={getColor()} />
           {showLabel ? (
-            <ThemedText style={[styles.label, { color: getColor() }]}>{getLabel()}</ThemedText>
+            <ThemedText style={[styles.label, { color: getColor() }]}>
+              {getLabel()}
+            </ThemedText>
           ) : null}
         </View>
       ) : (
         <View style={styles.dotContainer}>
           <View style={[styles.dot, { backgroundColor: getColor() }]} />
           {showLabel ? (
-            <ThemedText style={[styles.label, { color: getColor() }]}>{getLabel()}</ThemedText>
+            <ThemedText style={[styles.label, { color: getColor() }]}>
+              {getLabel()}
+            </ThemedText>
           ) : null}
         </View>
       )}

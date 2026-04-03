@@ -7,7 +7,11 @@ import {
   Pressable,
   Platform,
 } from "react-native";
-import { useNavigation, useRoute, useFocusEffect } from "@react-navigation/native";
+import {
+  useNavigation,
+  useRoute,
+  useFocusEffect,
+} from "@react-navigation/native";
 import { useHeaderHeight } from "@react-navigation/elements";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
@@ -18,12 +22,24 @@ import { ThemedText } from "@/components/ThemedText";
 import { ThemedView } from "@/components/ThemedView";
 import { Colors, Spacing, BorderRadius, Fonts } from "@/constants/theme";
 import { KeyboardAwareScrollViewCompat } from "@/components/KeyboardAwareScrollViewCompat";
-import { getGroup, saveGroupMessage, generateMessageId, getSettings, calculateExpiresAt, cleanupExpiredMessagesForGroup, type Group, type Message } from "@/lib/storage";
+import {
+  getGroup,
+  saveGroupMessage,
+  generateMessageId,
+  getSettings,
+  calculateExpiresAt,
+  cleanupExpiredMessagesForGroup,
+  type Group,
+  type Message,
+} from "@/lib/storage";
 import { sendGroupMessage, onGroupMessage } from "@/lib/socket";
 import { useIdentity } from "@/hooks/useIdentity";
 import type { ChatsStackParamList } from "@/navigation/ChatsStackNavigator";
 
-type NavigationProp = NativeStackNavigationProp<ChatsStackParamList, "GroupThread">;
+type NavigationProp = NativeStackNavigationProp<
+  ChatsStackParamList,
+  "GroupThread"
+>;
 type ScreenRouteProp = RouteProp<ChatsStackParamList, "GroupThread">;
 
 interface MessageBubbleProps {
@@ -46,7 +62,12 @@ function formatRemainingTime(expiresAt: number, now: number): string {
   return `${days}d`;
 }
 
-function MessageBubble({ message, isOwn, senderName, currentTime }: MessageBubbleProps) {
+function MessageBubble({
+  message,
+  isOwn,
+  senderName,
+  currentTime,
+}: MessageBubbleProps) {
   const formatTime = (timestamp: number) => {
     return new Date(timestamp).toLocaleTimeString([], {
       hour: "2-digit",
@@ -55,12 +76,16 @@ function MessageBubble({ message, isOwn, senderName, currentTime }: MessageBubbl
   };
 
   return (
-    <View style={[styles.messageContainer, isOwn && styles.ownMessageContainer]}>
+    <View
+      style={[styles.messageContainer, isOwn && styles.ownMessageContainer]}
+    >
       {!isOwn ? (
         <ThemedText style={styles.senderName}>{senderName}</ThemedText>
       ) : null}
       <View style={[styles.messageBubble, isOwn && styles.ownMessageBubble]}>
-        <ThemedText style={[styles.messageText, isOwn && styles.ownMessageText]}>
+        <ThemedText
+          style={[styles.messageText, isOwn && styles.ownMessageText]}
+        >
           {message.content}
         </ThemedText>
         <View style={styles.messageFooter}>
@@ -74,14 +99,18 @@ function MessageBubble({ message, isOwn, senderName, currentTime }: MessageBubbl
               <ThemedText
                 style={[
                   styles.timerText,
-                  { color: isOwn ? Colors.dark.buttonText : Colors.dark.warning },
+                  {
+                    color: isOwn ? Colors.dark.buttonText : Colors.dark.warning,
+                  },
                 ]}
               >
                 {formatRemainingTime(message.expiresAt, currentTime)}
               </ThemedText>
             </View>
           ) : null}
-          <ThemedText style={[styles.messageTime, isOwn && styles.ownMessageTime]}>
+          <ThemedText
+            style={[styles.messageTime, isOwn && styles.ownMessageTime]}
+          >
             {formatTime(message.timestamp)}
           </ThemedText>
         </View>
@@ -113,7 +142,7 @@ export default function GroupThreadScreen() {
     await cleanupExpiredMessagesForGroup(groupId);
     const [g, settings] = await Promise.all([getGroup(groupId), getSettings()]);
     if (g) {
-      const clonedGroup = { ...g, messages: g.messages.map(m => ({ ...m })) };
+      const clonedGroup = { ...g, messages: g.messages.map((m) => ({ ...m })) };
       setGroup(clonedGroup);
     } else {
       setGroup(null);
@@ -126,7 +155,10 @@ export default function GroupThreadScreen() {
       await cleanupExpiredMessagesForGroup(groupId);
       const g = await getGroup(groupId);
       if (g) {
-        const clonedGroup = { ...g, messages: g.messages.map(m => ({ ...m })) };
+        const clonedGroup = {
+          ...g,
+          messages: g.messages.map((m) => ({ ...m })),
+        };
         setGroup(clonedGroup);
       }
     }, 5000);
@@ -136,7 +168,7 @@ export default function GroupThreadScreen() {
   useFocusEffect(
     useCallback(() => {
       loadGroup();
-    }, [loadGroup])
+    }, [loadGroup]),
   );
 
   useEffect(() => {
@@ -254,7 +286,12 @@ export default function GroupThreadScreen() {
         }
       />
 
-      <View style={[styles.inputContainer, { paddingBottom: insets.bottom + Spacing.sm }]}>
+      <View
+        style={[
+          styles.inputContainer,
+          { paddingBottom: insets.bottom + Spacing.sm },
+        ]}
+      >
         <TextInput
           style={styles.input}
           value={inputText}
@@ -276,7 +313,11 @@ export default function GroupThreadScreen() {
           <Feather
             name="send"
             size={20}
-            color={inputText.trim() ? Colors.dark.buttonText : Colors.dark.textDisabled}
+            color={
+              inputText.trim()
+                ? Colors.dark.buttonText
+                : Colors.dark.textDisabled
+            }
           />
         </Pressable>
       </View>

@@ -1,12 +1,10 @@
 import React, { useState, useCallback } from "react";
+import { View, ScrollView, StyleSheet, Pressable, Alert } from "react-native";
 import {
-  View,
-  ScrollView,
-  StyleSheet,
-  Pressable,
-  Alert,
-} from "react-native";
-import { useNavigation, useRoute, useFocusEffect } from "@react-navigation/native";
+  useNavigation,
+  useRoute,
+  useFocusEffect,
+} from "@react-navigation/native";
 import { useHeaderHeight } from "@react-navigation/elements";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
@@ -22,7 +20,10 @@ import type { Contact } from "@/lib/crypto";
 import type { ChatsStackParamList } from "@/navigation/ChatsStackNavigator";
 import { Platform } from "react-native";
 
-type NavigationProp = NativeStackNavigationProp<ChatsStackParamList, "ContactInfo">;
+type NavigationProp = NativeStackNavigationProp<
+  ChatsStackParamList,
+  "ContactInfo"
+>;
 type ScreenRouteProp = RouteProp<ChatsStackParamList, "ContactInfo">;
 
 export default function ContactInfoScreen() {
@@ -38,7 +39,7 @@ export default function ContactInfoScreen() {
   useFocusEffect(
     useCallback(() => {
       getContact(contactId).then(setContact);
-    }, [contactId])
+    }, [contactId]),
   );
 
   const copyToClipboard = async (text: string) => {
@@ -63,7 +64,7 @@ export default function ContactInfoScreen() {
             navigation.popToTop();
           },
         },
-      ]
+      ],
     );
   };
 
@@ -114,7 +115,9 @@ export default function ContactInfoScreen() {
         </View>
 
         <View style={styles.section}>
-          <ThemedText style={styles.sectionTitle}>Public Key Fingerprint</ThemedText>
+          <ThemedText style={styles.sectionTitle}>
+            Public Key Fingerprint
+          </ThemedText>
           <Pressable
             onPress={() => setShowFullFingerprint(!showFullFingerprint)}
             style={({ pressed }) => [
@@ -122,7 +125,10 @@ export default function ContactInfoScreen() {
               pressed && styles.infoRowPressed,
             ]}
           >
-            <ThemedText style={styles.monoTextSmall} numberOfLines={showFullFingerprint ? 10 : 1}>
+            <ThemedText
+              style={styles.monoTextSmall}
+              numberOfLines={showFullFingerprint ? 10 : 1}
+            >
               {formatFingerprint(contact.fingerprint)}
             </ThemedText>
             <Feather

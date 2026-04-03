@@ -8,7 +8,11 @@ import {
   Alert,
   Platform,
 } from "react-native";
-import { useFocusEffect, useNavigation, CommonActions } from "@react-navigation/native";
+import {
+  useFocusEffect,
+  useNavigation,
+  CommonActions,
+} from "@react-navigation/native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
 import { Feather } from "@expo/vector-icons";
@@ -31,32 +35,39 @@ export default function ContactsScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [selectedContact, setSelectedContact] = useState<Contact | null>(null);
   const [showActionSheet, setShowActionSheet] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   const t = {
     contacts: language === "tr" ? "Kişiler" : "Contacts",
     noContacts: language === "tr" ? "Henüz kişi yok" : "No contacts yet",
-    addFirst: language === "tr" ? "İlk kişinizi ekleyin" : "Add your first contact",
+    addFirst:
+      language === "tr" ? "İlk kişinizi ekleyin" : "Add your first contact",
     addContact: language === "tr" ? "Kişi Ekle" : "Add Contact",
     message: language === "tr" ? "Mesaj Gönder" : "Send Message",
     delete: language === "tr" ? "Sil" : "Delete",
     cancel: language === "tr" ? "İptal" : "Cancel",
-    deleteConfirm: language === "tr" ? "Bu kişiyi silmek istediğinizden emin misiniz?" : "Are you sure you want to delete this contact?",
+    deleteConfirm:
+      language === "tr"
+        ? "Bu kişiyi silmek istediğinizden emin misiniz?"
+        : "Are you sure you want to delete this contact?",
     deleted: language === "tr" ? "Kişi silindi" : "Contact deleted",
   };
 
   const loadContacts = useCallback(async () => {
     const storedContacts = await getContacts();
-    setContacts(storedContacts.sort((a, b) => {
-      const nameA = a.displayName || a.id;
-      const nameB = b.displayName || b.id;
-      return nameA.localeCompare(nameB);
-    }));
+    setContacts(
+      storedContacts.sort((a, b) => {
+        const nameA = a.displayName || a.id;
+        const nameB = b.displayName || b.id;
+        return nameA.localeCompare(nameB);
+      }),
+    );
   }, []);
 
   useFocusEffect(
     useCallback(() => {
       loadContacts();
-    }, [loadContacts])
+    }, [loadContacts]),
   );
 
   const handleRefresh = async () => {
@@ -69,6 +80,15 @@ export default function ContactsScreen() {
     navigation.navigate("AddContact" as never);
   };
 
+  const handleCreateGroup = () => {
+    navigation.dispatch(
+      CommonActions.navigate({
+        name: "ChatsTab",
+        params: { screen: "CreateGroup" },
+      }),
+    );
+  };
+
   const handleContactPress = (contact: Contact) => {
     navigation.dispatch(
       CommonActions.navigate({
@@ -77,7 +97,7 @@ export default function ContactsScreen() {
           screen: "ChatThread",
           params: { contactId: contact.id },
         },
-      })
+      }),
     );
   };
 
@@ -91,25 +111,13 @@ export default function ContactsScreen() {
 
   const handleDeleteContact = async () => {
     if (!selectedContact) return;
-    
-    Alert.alert(
-      t.delete,
-      t.deleteConfirm,
-      [
-        { text: t.cancel, style: "cancel" },
-        {
-          text: t.delete,
-          style: "destructive",
-          onPress: async () => {
-            await removeContact(selectedContact.id);
-            if (Platform.OS !== "web") {
-              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-            }
-            loadContacts();
-          },
-        },
-      ]
-    );
+    await removeContact(selectedContact.id);
+    if (Platform.OS !== "web") {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    }
+    setSelectedContact(null);
+    setShowDeleteConfirm(false);
+    loadContacts();
   };
 
   const actionSheetOptions: ActionSheetOption[] = [
@@ -123,7 +131,7 @@ export default function ContactsScreen() {
     },
     {
       text: t.delete,
-      onPress: handleDeleteContact,
+      onPress: () => setShowDeleteConfirm(true),
       style: "destructive",
     },
     {
@@ -155,7 +163,11 @@ export default function ContactsScreen() {
           </ThemedText>
           <ThemedText style={styles.contactId}>{item.id}</ThemedText>
         </View>
-        <Feather name="chevron-right" size={20} color={Colors.dark.textSecondary} />
+        <Feather
+          name="chevron-right"
+          size={20}
+          color={Colors.dark.textSecondary}
+        />
       </Pressable>
     );
   };
@@ -182,6 +194,37 @@ export default function ContactsScreen() {
 
   return (
     <ThemedView style={styles.container}>
+      {/* Özel başlık */}
+      <View
+        style={[styles.customHeader, { paddingTop: insets.top + Spacing.sm }]}
+      >
+        <ThemedText style={styles.headerTitle}>
+          {language === "tr" ? "Kişiler" : "Contacts"}
+        </ThemedText>
+        <View style={styles.headerActions}>
+          <Pressable
+            onPress={handleCreateGroup}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            style={({ pressed }) => [
+              styles.headerBtn,
+              pressed && styles.headerBtnPressed,
+            ]}
+          >
+            <Feather name="users" size={20} color={Colors.dark.text} />
+          </Pressable>
+          <Pressable
+            onPress={handleAddContact}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            style={({ pressed }) => [
+              styles.headerBtn,
+              pressed && styles.headerBtnPressed,
+            ]}
+          >
+            <Feather name="user-plus" size={20} color={Colors.dark.primary} />
+          </Pressable>
+        </View>
+      </View>
+
       <FlatList
         data={contacts}
         keyExtractor={(item) => item.id}
@@ -189,7 +232,7 @@ export default function ContactsScreen() {
         contentContainerStyle={[
           styles.listContent,
           {
-            paddingTop: insets.top + Spacing.xl,
+            paddingTop: Spacing.sm,
             paddingBottom: tabBarHeight + Spacing.xl,
           },
           contacts.length === 0 && styles.emptyListContent,
@@ -220,6 +263,25 @@ export default function ContactsScreen() {
         onClose={() => setShowActionSheet(false)}
         options={actionSheetOptions}
       />
+
+      <ActionSheet
+        visible={showDeleteConfirm}
+        onClose={() => setShowDeleteConfirm(false)}
+        title={t.delete}
+        message={t.deleteConfirm}
+        options={[
+          {
+            text: t.delete,
+            style: "destructive",
+            onPress: handleDeleteContact,
+          },
+          {
+            text: t.cancel,
+            style: "cancel",
+            onPress: () => setShowDeleteConfirm(false),
+          },
+        ]}
+      />
     </ThemedView>
   );
 }
@@ -228,6 +290,34 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: Colors.dark.backgroundRoot,
+  },
+  customHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: Spacing.lg,
+    paddingBottom: Spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.dark.border,
+  },
+  headerTitle: {
+    fontSize: 24,
+    fontWeight: "700",
+    color: Colors.dark.text,
+  },
+  headerActions: {
+    flexDirection: "row",
+    gap: Spacing.xs,
+  },
+  headerBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  headerBtnPressed: {
+    backgroundColor: Colors.dark.backgroundSecondary,
   },
   listContent: {
     paddingHorizontal: Spacing.md,

@@ -32,7 +32,9 @@ import { useLanguage } from "@/constants/language";
 
 type NavigationProp = NativeStackNavigationProp<ChatsStackParamList>;
 
-type ArchivedItem = (Chat & { type: "chat"; displayName: string }) | (Group & { type: "group" });
+type ArchivedItem =
+  | (Chat & { type: "chat"; displayName: string })
+  | (Group & { type: "group" });
 
 export default function ArchivedChatsScreen() {
   const navigation = useNavigation<NavigationProp>();
@@ -45,19 +47,23 @@ export default function ArchivedChatsScreen() {
 
   const t = {
     delete: language === "tr" ? "Sil" : "Delete",
-    deleteConversation: language === "tr" 
-      ? "Bu sohbeti kalıcı olarak silmek istediğinizden emin misiniz?"
-      : "Are you sure you want to permanently delete this conversation?",
-    deleteGroup: language === "tr" 
-      ? "Bu grubu kalıcı olarak silmek istediğinizden emin misiniz?"
-      : "Are you sure you want to permanently delete this group?",
+    deleteConversation:
+      language === "tr"
+        ? "Bu sohbeti kalıcı olarak silmek istediğinizden emin misiniz?"
+        : "Are you sure you want to permanently delete this conversation?",
+    deleteGroup:
+      language === "tr"
+        ? "Bu grubu kalıcı olarak silmek istediğinizden emin misiniz?"
+        : "Are you sure you want to permanently delete this group?",
     cancel: language === "tr" ? "İptal" : "Cancel",
     members: language === "tr" ? "üye" : "members",
     directMessage: language === "tr" ? "Doğrudan mesaj" : "Direct message",
-    noArchivedItems: language === "tr" ? "Arşivlenmiş Öğe Yok" : "No Archived Items",
-    archivedWillAppear: language === "tr" 
-      ? "Arşivlenmiş sohbetler ve gruplar burada görünecek"
-      : "Archived chats and groups will appear here",
+    noArchivedItems:
+      language === "tr" ? "Arşivlenmiş Öğe Yok" : "No Archived Items",
+    archivedWillAppear:
+      language === "tr"
+        ? "Arşivlenmiş sohbetler ve gruplar burada görünecek"
+        : "Archived chats and groups will appear here",
   };
 
   const loadArchivedItems = useCallback(async () => {
@@ -76,7 +82,7 @@ export default function ArchivedChatsScreen() {
             type: "chat" as const,
             displayName: contact?.displayName || chat.contactId,
           };
-        })
+        }),
       );
 
       const groupItems: ArchivedItem[] = archivedGroups.map((group) => ({
@@ -85,7 +91,7 @@ export default function ArchivedChatsScreen() {
       }));
 
       const allItems = [...chatItems, ...groupItems].sort(
-        (a, b) => b.lastMessageAt - a.lastMessageAt
+        (a, b) => b.lastMessageAt - a.lastMessageAt,
       );
 
       setItems(allItems);
@@ -97,7 +103,7 @@ export default function ArchivedChatsScreen() {
   useFocusEffect(
     useCallback(() => {
       loadArchivedItems();
-    }, [loadArchivedItems])
+    }, [loadArchivedItems]),
   );
 
   const handleUnarchive = async (item: ArchivedItem) => {
@@ -131,7 +137,7 @@ export default function ArchivedChatsScreen() {
             loadArchivedItems();
           },
         },
-      ]
+      ],
     );
   };
 
@@ -150,7 +156,9 @@ export default function ArchivedChatsScreen() {
           {item.type === "chat" ? item.displayName : item.name}
         </ThemedText>
         <ThemedText style={styles.itemMeta}>
-          {item.type === "group" ? `${item.members.length} ${t.members}` : t.directMessage}
+          {item.type === "group"
+            ? `${item.members.length} ${t.members}`
+            : t.directMessage}
         </ThemedText>
       </View>
 
@@ -193,8 +201,14 @@ export default function ArchivedChatsScreen() {
         ]}
         ListEmptyComponent={
           <View style={styles.emptyState}>
-            <Feather name="archive" size={48} color={Colors.dark.textDisabled} />
-            <ThemedText style={styles.emptyTitle}>{t.noArchivedItems}</ThemedText>
+            <Feather
+              name="archive"
+              size={48}
+              color={Colors.dark.textDisabled}
+            />
+            <ThemedText style={styles.emptyTitle}>
+              {t.noArchivedItems}
+            </ThemedText>
             <ThemedText style={styles.emptyText}>
               {t.archivedWillAppear}
             </ThemedText>

@@ -37,19 +37,29 @@ export default function CreateGroupScreen() {
   const t = {
     groupInfo: language === "tr" ? "Grup Bilgisi" : "Group Info",
     groupName: language === "tr" ? "Grup adı" : "Group name",
-    description: language === "tr" ? "Açıklama (isteğe bağlı)" : "Description (optional)",
+    description:
+      language === "tr" ? "Açıklama (isteğe bağlı)" : "Description (optional)",
     selectMembers: language === "tr" ? "Üye Seç" : "Select Members",
     noContacts: language === "tr" ? "Henüz kişi yok" : "No contacts yet",
-    addContactsFirst: language === "tr" ? "Önce grup oluşturmak için kişi ekleyin" : "Add contacts first to create a group",
+    addContactsFirst:
+      language === "tr"
+        ? "Önce grup oluşturmak için kişi ekleyin"
+        : "Add contacts first to create a group",
     createGroup: language === "tr" ? "Grup Oluştur" : "Create Group",
     creating: language === "tr" ? "Oluşturuluyor..." : "Creating...",
     error: language === "tr" ? "Hata" : "Error",
-    enterGroupName: language === "tr" ? "Lütfen grup adı girin" : "Please enter a group name",
-    identityNotLoaded: language === "tr" ? "Kimlik yüklenmedi" : "Identity not loaded",
+    enterGroupName:
+      language === "tr" ? "Lütfen grup adı girin" : "Please enter a group name",
+    identityNotLoaded:
+      language === "tr" ? "Kimlik yüklenmedi" : "Identity not loaded",
     success: language === "tr" ? "Başarılı" : "Success",
-    groupCreated: language === "tr" ? "Grup başarıyla oluşturuldu" : "Group created successfully",
+    groupCreated:
+      language === "tr"
+        ? "Grup başarıyla oluşturuldu"
+        : "Group created successfully",
     ok: language === "tr" ? "Tamam" : "OK",
-    failedToCreate: language === "tr" ? "Grup oluşturulamadı" : "Failed to create group",
+    failedToCreate:
+      language === "tr" ? "Grup oluşturulamadı" : "Failed to create group",
   };
 
   useEffect(() => {
@@ -63,7 +73,7 @@ export default function CreateGroupScreen() {
     setSelectedContacts((prev) =>
       prev.includes(contactId)
         ? prev.filter((id) => id !== contactId)
-        : [...prev, contactId]
+        : [...prev, contactId],
     );
   };
 
@@ -85,12 +95,12 @@ export default function CreateGroupScreen() {
         description.trim(),
         identity.id,
         identity.publicKey,
-        identity.displayName || identity.id
+        identity.displayName || identity.id,
       );
 
       // Seçilen kişileri yerel grup üyesi olarak ekle (E2EE için public key gerekli)
       for (const contactId of selectedContacts) {
-        const contact = contacts.find(c => c.id === contactId);
+        const contact = contacts.find((c) => c.id === contactId);
         if (contact) {
           await addGroupMember(newGroup.id, {
             id: contact.id,
@@ -176,12 +186,17 @@ export default function CreateGroupScreen() {
                 onPress={() => toggleContact(contact.id)}
                 style={({ pressed }) => [
                   styles.contactRow,
-                  selectedContacts.includes(contact.id) && styles.contactRowSelected,
+                  selectedContacts.includes(contact.id) &&
+                    styles.contactRowSelected,
                   pressed && styles.contactRowPressed,
                 ]}
               >
                 <View style={styles.contactAvatar}>
-                  <Feather name="user" size={20} color={Colors.dark.secondary} />
+                  <Feather
+                    name="user"
+                    size={20}
+                    color={Colors.dark.secondary}
+                  />
                 </View>
                 <View style={styles.contactInfo}>
                   <ThemedText style={styles.contactName}>
@@ -190,9 +205,17 @@ export default function CreateGroupScreen() {
                   <ThemedText style={styles.contactId}>{contact.id}</ThemedText>
                 </View>
                 {selectedContacts.includes(contact.id) ? (
-                  <Feather name="check-circle" size={24} color={Colors.dark.primary} />
+                  <Feather
+                    name="check-circle"
+                    size={24}
+                    color={Colors.dark.primary}
+                  />
                 ) : (
-                  <Feather name="circle" size={24} color={Colors.dark.textDisabled} />
+                  <Feather
+                    name="circle"
+                    size={24}
+                    color={Colors.dark.textDisabled}
+                  />
                 )}
               </Pressable>
             ))}

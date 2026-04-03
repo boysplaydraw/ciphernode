@@ -132,7 +132,10 @@ export async function addContact(contact: Contact): Promise<void> {
 }
 
 /** Var olan bir kişinin alanlarını güncelle (ör. public key geldiğinde) */
-export async function updateContact(contactId: string, updates: Partial<Contact>): Promise<void> {
+export async function updateContact(
+  contactId: string,
+  updates: Partial<Contact>,
+): Promise<void> {
   const contacts = await getContacts();
   const idx = contacts.findIndex((c) => c.id === contactId);
   if (idx !== -1) {
@@ -179,7 +182,7 @@ export async function getChat(contactId: string): Promise<Chat | null> {
 
 export async function saveMessage(
   contactId: string,
-  message: Message
+  message: Message,
 ): Promise<void> {
   const chats = await getChats();
   let chat = chats.find((c) => c.contactId === contactId);
@@ -195,9 +198,26 @@ export async function saveMessage(
     chats.push(chat);
   }
 
-  chat.messages.push(message);
-  chat.lastMessageAt = message.timestamp;
+  // Aynı ID'li mesaj zaten varsa kaydetme (duplicate önleme)
+  if (!chat.messages.find((m) => m.id === message.id)) {
+    chat.messages.push(message);
+    chat.lastMessageAt = message.timestamp;
+  }
 
+  await AsyncStorage.setItem(CHATS_KEY, JSON.stringify(chats));
+}
+
+export async function updateMessageStatus(
+  contactId: string,
+  messageId: string,
+  status: Message["status"],
+): Promise<void> {
+  const chats = await getChats();
+  const chat = chats.find((c) => c.contactId === contactId);
+  if (!chat) return;
+  const msg = chat.messages.find((m) => m.id === messageId);
+  if (!msg) return;
+  msg.status = status;
   await AsyncStorage.setItem(CHATS_KEY, JSON.stringify(chats));
 }
 
@@ -234,7 +254,10 @@ export async function deleteChat(contactId: string): Promise<void> {
   await AsyncStorage.setItem(CHATS_KEY, JSON.stringify(filtered));
 }
 
-export async function deleteMessage(contactId: string, messageId: string): Promise<void> {
+export async function deleteMessage(
+  contactId: string,
+  messageId: string,
+): Promise<void> {
   const chats = await getChats();
   const chat = chats.find((c) => c.contactId === contactId);
   if (chat) {
@@ -281,7 +304,7 @@ export async function createGroup(
   description: string,
   creatorId: string,
   creatorPublicKey: string,
-  creatorDisplayName: string
+  creatorDisplayName: string,
 ): Promise<Group> {
   const groups = await getGroups();
   const newGroup: Group = {
@@ -311,7 +334,7 @@ export async function createGroup(
 
 export async function addGroupMember(
   groupId: string,
-  member: GroupMember
+  member: GroupMember,
 ): Promise<void> {
   const groups = await getGroups();
   const group = groups.find((g) => g.id === groupId);
@@ -326,7 +349,7 @@ export async function addGroupMember(
 
 export async function removeGroupMember(
   groupId: string,
-  memberId: string
+  memberId: string,
 ): Promise<void> {
   const groups = await getGroups();
   const group = groups.find((g) => g.id === groupId);
@@ -338,7 +361,7 @@ export async function removeGroupMember(
 
 export async function saveGroupMessage(
   groupId: string,
-  message: Message
+  message: Message,
 ): Promise<void> {
   const groups = await getGroups();
   const group = groups.find((g) => g.id === groupId);
@@ -375,7 +398,7 @@ export async function deleteGroup(groupId: string): Promise<void> {
 
 export async function updateGroupName(
   groupId: string,
-  name: string
+  name: string,
 ): Promise<void> {
   const groups = await getGroups();
   const group = groups.find((g) => g.id === groupId);
@@ -397,12 +420,12 @@ export async function getSettings(): Promise<AppSettings> {
 }
 
 export async function updateSettings(
-  updates: Partial<AppSettings>
+  updates: Partial<AppSettings>,
 ): Promise<void> {
   const current = await getSettings();
   await AsyncStorage.setItem(
     SETTINGS_KEY,
-    JSON.stringify({ ...current, ...updates })
+    JSON.stringify({ ...current, ...updates }),
   );
 }
 
@@ -418,12 +441,12 @@ export async function getPrivacySettings(): Promise<PrivacySettings> {
 }
 
 export async function updatePrivacySettings(
-  updates: Partial<PrivacySettings>
+  updates: Partial<PrivacySettings>,
 ): Promise<void> {
   const current = await getPrivacySettings();
   await AsyncStorage.setItem(
     PRIVACY_SETTINGS_KEY,
-    JSON.stringify({ ...current, ...updates })
+    JSON.stringify({ ...current, ...updates }),
   );
 }
 
@@ -439,12 +462,12 @@ export async function getTorSettings(): Promise<TorSettings> {
 }
 
 export async function updateTorSettings(
-  updates: Partial<TorSettings>
+  updates: Partial<TorSettings>,
 ): Promise<void> {
   const current = await getTorSettings();
   await AsyncStorage.setItem(
     TOR_SETTINGS_KEY,
-    JSON.stringify({ ...current, ...updates })
+    JSON.stringify({ ...current, ...updates }),
   );
 }
 
@@ -495,9 +518,10 @@ export async function cleanupExpiredMessages(): Promise<number> {
     const deleted = originalLength - chat.messages.length;
     deletedCount += deleted;
     if (deleted > 0) {
-      chat.lastMessageAt = chat.messages.length > 0 
-        ? chat.messages[chat.messages.length - 1].timestamp 
-        : 0;
+      chat.lastMessageAt =
+        chat.messages.length > 0
+          ? chat.messages[chat.messages.length - 1].timestamp
+          : 0;
       chat.unreadCount = Math.min(chat.unreadCount, chat.messages.length);
     }
   }
@@ -515,9 +539,10 @@ export async function cleanupExpiredMessages(): Promise<number> {
     const deleted = originalLength - group.messages.length;
     deletedCount += deleted;
     if (deleted > 0) {
-      group.lastMessageAt = group.messages.length > 0 
-        ? group.messages[group.messages.length - 1].timestamp 
-        : 0;
+      group.lastMessageAt =
+        group.messages.length > 0
+          ? group.messages[group.messages.length - 1].timestamp
+          : 0;
       group.unreadCount = Math.min(group.unreadCount, group.messages.length);
     }
   }
@@ -526,34 +551,88 @@ export async function cleanupExpiredMessages(): Promise<number> {
   return deletedCount;
 }
 
-export async function cleanupExpiredMessagesForChat(contactId: string): Promise<void> {
+export async function cleanupExpiredMessagesForChat(
+  contactId: string,
+): Promise<void> {
   const now = Date.now();
   const chats = await getChats();
   const chat = chats.find((c) => c.contactId === contactId);
   if (chat) {
     const originalLength = chat.messages.length;
-    chat.messages = chat.messages.filter((msg) => !msg.expiresAt || msg.expiresAt > now);
+    chat.messages = chat.messages.filter(
+      (msg) => !msg.expiresAt || msg.expiresAt > now,
+    );
     if (chat.messages.length !== originalLength) {
-      chat.lastMessageAt = chat.messages.length > 0 
-        ? chat.messages[chat.messages.length - 1].timestamp 
-        : 0;
+      chat.lastMessageAt =
+        chat.messages.length > 0
+          ? chat.messages[chat.messages.length - 1].timestamp
+          : 0;
       chat.unreadCount = Math.min(chat.unreadCount, chat.messages.length);
       await AsyncStorage.setItem(CHATS_KEY, JSON.stringify(chats));
     }
   }
 }
 
-export async function cleanupExpiredMessagesForGroup(groupId: string): Promise<void> {
+/**
+ * Kişileri sunucuya yükle — aynı kimlik başka bir cihazda da kullanılıyorsa senkronize olur.
+ */
+export async function pushContactsToServer(
+  userId: string,
+  apiUrl: string,
+): Promise<void> {
+  const contacts = await getContacts();
+  await fetch(`${apiUrl}api/contacts/${encodeURIComponent(userId)}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ contacts }),
+  });
+}
+
+/**
+ * Sunucudaki kişileri çek ve yerel listeyle birleştir.
+ * Yeni kişiler eklenir; mevcut kişiler değiştirilmez (yerel veri öncelikli).
+ */
+export async function pullContactsFromServer(
+  userId: string,
+  apiUrl: string,
+): Promise<number> {
+  const res = await fetch(
+    `${apiUrl}api/contacts/${encodeURIComponent(userId)}`,
+  );
+  if (!res.ok) return 0;
+  const data = await res.json();
+  const remoteContacts: Contact[] = data.contacts || [];
+  if (remoteContacts.length === 0) return 0;
+
+  const localContacts = await getContacts();
+  const localIds = new Set(localContacts.map((c) => c.id));
+
+  let added = 0;
+  for (const contact of remoteContacts) {
+    if (!localIds.has(contact.id)) {
+      await addContact(contact);
+      added++;
+    }
+  }
+  return added;
+}
+
+export async function cleanupExpiredMessagesForGroup(
+  groupId: string,
+): Promise<void> {
   const now = Date.now();
   const groups = await getGroups();
   const group = groups.find((g) => g.id === groupId);
   if (group) {
     const originalLength = group.messages.length;
-    group.messages = group.messages.filter((msg) => !msg.expiresAt || msg.expiresAt > now);
+    group.messages = group.messages.filter(
+      (msg) => !msg.expiresAt || msg.expiresAt > now,
+    );
     if (group.messages.length !== originalLength) {
-      group.lastMessageAt = group.messages.length > 0 
-        ? group.messages[group.messages.length - 1].timestamp 
-        : 0;
+      group.lastMessageAt =
+        group.messages.length > 0
+          ? group.messages[group.messages.length - 1].timestamp
+          : 0;
       group.unreadCount = Math.min(group.unreadCount, group.messages.length);
       await AsyncStorage.setItem(GROUPS_KEY, JSON.stringify(groups));
     }

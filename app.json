@@ -21,7 +21,8 @@
       },
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
-      "package": "com.ciphernode.app"
+      "package": "com.ciphernode.app",
+      "usesCleartextTraffic": true
     },
     "web": {
       "output": "single",
@@ -47,11 +48,14 @@
         }
       ],
       "expo-web-browser",
-      "./plugins/withDisableLint",
+      "./plugins/withDisableLint.cjs",
       [
         "expo-build-properties",
         {
           "android": {
+            "compileSdkVersion": 36,
+            "targetSdkVersion": 36,
+            "minSdkVersion": 24,
             "packagingOptions": {
               "pickFirst": [
                 "lib/x86/libcrypto.so",

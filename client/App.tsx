@@ -251,12 +251,15 @@ export default function App() {
   // Ref'i güncel tut — isLocked effect'i döngüye girmeden handler'ı çağırabilsin
   biometricUnlockRef.current = handleBiometricUnlock;
 
-  // Kilit ekranı açıldığında biyometrik diyaloğu otomatik tetikle
+  // Kilit ekranı görünür hale gelince biyometrik diyaloğu otomatik tetikle.
+  // isLoading=true iken Modal render edilmediğinden, yükleme bitip ekran
+  // görünür olana kadar bekliyoruz. Arka plandan dönüşlerde isLoading
+  // zaten false olduğundan anında tetiklenir.
   useEffect(() => {
-    if (!isLocked) return;
-    const timer = setTimeout(() => biometricUnlockRef.current?.(), 300);
+    if (isLoading || !isLocked || showOnboarding || criticalError) return;
+    const timer = setTimeout(() => biometricUnlockRef.current?.(), 500);
     return () => clearTimeout(timer);
-  }, [isLocked]);
+  }, [isLoading, isLocked, showOnboarding, criticalError]);
 
   const handleSetLanguage = useCallback((lang: Language) => {
     setLanguageState(lang);

@@ -1,0 +1,39 @@
+<?xml version="1.0"?>
+<!--
+  CipherNode — Unraid Community Applications Template
+  Kurulum: Unraid → Apps → Import Template → Bu XML'i yapıştır
+  veya: /boot/config/plugins/dockerMan/templates-user/ klasörüne kopyala
+-->
+<Container version="2">
+  <Name>CipherNode-Relay</Name>
+  <Repository>node:20-alpine</Repository>
+  <Registry>https://hub.docker.com/_/node</Registry>
+  <Network>bridge</Network>
+  <MyIP/>
+  <Shell>sh</Shell>
+  <Privileged>false</Privileged>
+  <Support>https://github.com/YOUR_USER/ciphernode</Support>
+  <Project>https://github.com/YOUR_USER/ciphernode</Project>
+  <Overview>
+    End-to-end encrypted anonymous messaging relay server.
+    OpenPGP RSA-4096 encryption, Tor support, P2P mode, file sharing.
+    No logs, no tracking, complete control.
+    &#xD;&#xA;
+    Setup: After first start, build will run automatically.
+    Access via: http://[IP]:5000
+  </Overview>
+  <Category>Network:Messenger</Category>
+  <WebUI>http://[IP]:[PORT:5000]/</WebUI>
+  <TemplateURL>https://raw.githubusercontent.com/YOUR_USER/ciphernode/main/unraid/ciphernode.xml</TemplateURL>
+  <Icon>https://raw.githubusercontent.com/YOUR_USER/ciphernode/main/assets/icon.png</Icon>
+  <PostArgs/>
+  <CPUset/>
+  <DateInstalled/>
+  <DonateText/>
+  <DonateLink/>
+  <Requires/>
+  <Config Name="WebUI Port" Target="5000" Default="5000" Mode="tcp" Description="CipherNode relay server HTTP port" Type="Port" Display="always" Required="true" Mask="false">5000</Config>
+  <Config Name="Node Environment" Target="NODE_ENV" Default="production" Mode="" Description="production or development" Type="Variable" Display="always" Required="true" Mask="false">production</Config>
+  <Config Name="Host Bind" Target="HOST" Default="0.0.0.0" Mode="" Description="Bind address - keep 0.0.0.0 for all interfaces" Type="Variable" Display="advanced" Required="false" Mask="false">0.0.0.0</Config>
+  <Config Name="App Data" Target="/app" Default="/mnt/user/appdata/ciphernode" Mode="rw" Description="Application directory" Type="Path" Display="advanced" Required="true" Mask="false">/mnt/user/appdata/ciphernode</Config>
+</Container>

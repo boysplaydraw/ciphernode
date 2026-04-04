@@ -325,8 +325,8 @@ export default function App() {
                       >
                         <Text style={styles.unlockButtonText}>
                           {language === "tr"
-                            ? "🔐 Parmak İzi / Yüz Kimliği"
-                            : "🔐 Fingerprint / Face ID"}
+                            ? "🔐 Kilidi Aç"
+                            : "🔐 Unlock"}
                         </Text>
                       </Pressable>
                     </View>

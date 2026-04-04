@@ -160,6 +160,7 @@ export default function SettingsScreen() {
     connectionStatus: "disconnected",
   });
   const [biometricAvailable, setBiometricAvailable] = useState(false);
+  const [biometricHardware, setBiometricHardware] = useState(false);
   const [biometricAvailableDesktop, setBiometricAvailableDesktop] =
     useState(false);
   const [showLanguageModal, setShowLanguageModal] = useState(false);
@@ -183,7 +184,11 @@ export default function SettingsScreen() {
       setTorSettings(t);
       setTorProxyInput(`${t.proxyHost}:${t.proxyPort}`);
     });
-    LocalAuthentication.hasHardwareAsync().then(setBiometricAvailable);
+    // Level >= 1 means device has at least PIN/password (or biometric)
+    LocalAuthentication.getEnrolledLevelAsync().then((level) =>
+      setBiometricAvailable(level >= 1),
+    );
+    LocalAuthentication.hasHardwareAsync().then(setBiometricHardware);
 
     // Electron'da Touch ID / Windows Hello kullanılabilirliği kontrol et
     if (isElectron()) {
@@ -834,12 +839,16 @@ export default function SettingsScreen() {
                       ? "Bu cihazda desteklenmiyor"
                       : "Not supported on this device"
                   : biometricAvailable
-                    ? currentLanguage === "tr"
-                      ? "Parmak izi / Yüz kimliği ile giriş"
-                      : "Require fingerprint / Face ID to open app"
+                    ? biometricHardware
+                      ? currentLanguage === "tr"
+                        ? "Parmak izi / Yüz kimliği veya PIN ile giriş"
+                        : "Require fingerprint / Face ID or PIN to open app"
+                      : currentLanguage === "tr"
+                        ? "Cihaz PIN / Şifresi ile giriş"
+                        : "Require device PIN / password to open app"
                     : currentLanguage === "tr"
-                      ? "Cihaz desteklemiyor"
-                      : "Device not supported"
+                      ? "Cihazda kilit ekranı ayarlanmamış"
+                      : "No device lock screen set up"
               }
               rightElement={
                 <Switch
@@ -857,7 +866,9 @@ export default function SettingsScreen() {
                   disabled={
                     isElectron()
                       ? !biometricAvailableDesktop
-                      : !biometricAvailable && Platform.OS !== "web"
+                      : Platform.OS === "web"
+                        ? true
+                        : !biometricAvailable
                   }
                 />
               }

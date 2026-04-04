@@ -27,16 +27,17 @@
   ],
 
   "asar": true,
-  "asarUnpack": [
-    "**/*.node"
-  ],
+  "asarUnpack": ["**/*.node"],
+  "npmRebuild": false,
 
   "win": {
     "target": [
-      { "target": "nsis",     "arch": ["x64"] },
+      { "target": "nsis", "arch": ["x64"] },
       { "target": "portable", "arch": ["x64"] }
     ],
     "icon": "assets/images/icon.png",
+    "signAndEditExecutable": false,
+    "forceCodeSigning": false,
     "extraResources": [
       {
         "from": "tor-bin/windows",
@@ -68,8 +69,8 @@
   "linux": {
     "target": [
       { "target": "AppImage", "arch": ["x64", "arm64"] },
-      { "target": "deb",      "arch": ["x64", "arm64"] },
-      { "target": "rpm",      "arch": ["x64"] }
+      { "target": "deb", "arch": ["x64", "arm64"] },
+      { "target": "rpm", "arch": ["x64"] }
     ],
     "icon": "assets/images/icon.png",
     "category": "Network",

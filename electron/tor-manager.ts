@@ -25,7 +25,14 @@ let bootstrapProgress = 0;
 
 // ── Durum bildirimi için callback ─────────────────────────────────────
 type StatusCallback = (status: {
-  stage: "checking" | "downloading" | "starting" | "bootstrapping" | "ready" | "error" | "stopped";
+  stage:
+    | "checking"
+    | "downloading"
+    | "starting"
+    | "bootstrapping"
+    | "ready"
+    | "error"
+    | "stopped";
   progress?: number;
   message?: string;
 }) => void;
@@ -36,7 +43,11 @@ export function onTorStatus(cb: StatusCallback) {
   statusCallback = cb;
 }
 
-function emit(stage: Parameters<StatusCallback>[0]["stage"], progress?: number, message?: string) {
+function emit(
+  stage: Parameters<StatusCallback>[0]["stage"],
+  progress?: number,
+  message?: string,
+) {
   statusCallback?.({ stage, progress, message });
 }
 
@@ -75,24 +86,44 @@ function getTorBinaryPath(): string | null {
   }
   const subdir = torBinSubdir();
 
-  // 1. Geliştirme: electron/dist/../../../tor-bin/ (proje kökü)
+  // 1. Geliştirme: app.getAppPath() proje kökünü döndürür
   const appPath = app.getAppPath();
-  const devRoot = path.resolve(appPath, "..", "..", "..");  // electron/dist → proje kökü
+  // app.getAppPath() farklı electron sürümlerinde farklı davranabilir;
+  // hem proje kökünü hem de electron/dist altını dene
+  const candidates_dev_roots = [
+    appPath, // genellikle proje kökü
+    path.resolve(appPath, ".."), // bir üst
+    path.resolve(appPath, "..", ".."), // iki üst (packed asar için)
+  ];
 
   const devCandidates: string[] = [];
-  devCandidates.push(path.join(devRoot, "tor-bin", subdir, exeName));
+  for (const devRoot of candidates_dev_roots) {
+    devCandidates.push(path.join(devRoot, "tor-bin", subdir, exeName));
+  }
 
-  // macOS / Linux fallback: eski "macos" veya "linux" klasörü
-  if (process.platform === "darwin") {
-    devCandidates.push(path.join(devRoot, "tor-bin", "macos", "tor"));
-  } else if (process.platform !== "win32") {
-    devCandidates.push(path.join(devRoot, "tor-bin", "linux", "tor"));
+  // macOS / Linux fallback: eski isimli klasörler
+  const fallbackSubdir =
+    process.platform === "darwin"
+      ? "macos"
+      : process.platform === "linux"
+        ? "linux"
+        : null;
+  if (fallbackSubdir) {
+    for (const devRoot of candidates_dev_roots) {
+      devCandidates.push(path.join(devRoot, "tor-bin", fallbackSubdir, "tor"));
+    }
   }
 
   // 2. Üretim: exe yanında resources/tor-bin/
-  const prodBase = process.platform === "darwin"
-    ? path.join(path.dirname(app.getPath("exe")), "..", "Resources", "tor-bin")
-    : path.join(path.dirname(app.getPath("exe")), "resources", "tor-bin");
+  const prodBase =
+    process.platform === "darwin"
+      ? path.join(
+          path.dirname(app.getPath("exe")),
+          "..",
+          "Resources",
+          "tor-bin",
+        )
+      : path.join(path.dirname(app.getPath("exe")), "resources", "tor-bin");
 
   const prodCandidates: string[] = [];
   prodCandidates.push(path.join(prodBase, exeName));
@@ -106,7 +137,9 @@ function getTorBinaryPath(): string | null {
   const systemTor = process.platform === "win32" ? "tor.exe" : "tor";
   try {
     const { execSync } = require("node:child_process");
-    execSync(`which ${systemTor} 2>/dev/null || where ${systemTor} 2>nul`, { stdio: "ignore" });
+    execSync(`which ${systemTor} 2>/dev/null || where ${systemTor} 2>nul`, {
+      stdio: "ignore",
+    });
     return systemTor; // PATH'de bulundu
   } catch {
     return null;
@@ -116,16 +149,27 @@ function getTorBinaryPath(): string | null {
 // ── Tor indir ─────────────────────────────────────────────────────────
 export async function downloadTor(): Promise<void> {
   const platform = process.platform;
+  const arch = process.arch; // "x64" | "arm64" | "ia32" | ...
 
-  // Tor Expert Bundle indirme URL'leri (torproject.org CDN)
+  // Tor Expert Bundle 13.5.1 — platform + mimari kombinasyonuna göre URL
   const URLS: Record<string, string> = {
-    win32: "https://archive.torproject.org/tor-package-archive/torbrowser/13.5.1/tor-expert-bundle-windows-x86_64-13.5.1.tar.gz",
-    darwin: "https://archive.torproject.org/tor-package-archive/torbrowser/13.5.1/tor-expert-bundle-macos-aarch64-13.5.1.tar.gz",
-    linux:  "https://archive.torproject.org/tor-package-archive/torbrowser/13.5.1/tor-expert-bundle-linux-x86_64-13.5.1.tar.gz",
+    "win32-x64":
+      "https://archive.torproject.org/tor-package-archive/torbrowser/13.5.1/tor-expert-bundle-windows-x86_64-13.5.1.tar.gz",
+    "win32-ia32":
+      "https://archive.torproject.org/tor-package-archive/torbrowser/13.5.1/tor-expert-bundle-windows-i686-13.5.1.tar.gz",
+    "darwin-x64":
+      "https://archive.torproject.org/tor-package-archive/torbrowser/13.5.1/tor-expert-bundle-macos-x86_64-13.5.1.tar.gz",
+    "darwin-arm64":
+      "https://archive.torproject.org/tor-package-archive/torbrowser/13.5.1/tor-expert-bundle-macos-aarch64-13.5.1.tar.gz",
+    "linux-x64":
+      "https://archive.torproject.org/tor-package-archive/torbrowser/13.5.1/tor-expert-bundle-linux-x86_64-13.5.1.tar.gz",
+    "linux-arm64":
+      "https://archive.torproject.org/tor-package-archive/torbrowser/13.5.1/tor-expert-bundle-linux-aarch64-13.5.1.tar.gz",
   };
 
-  const url = URLS[platform];
-  if (!url) throw new Error(`Unsupported platform: ${platform}`);
+  const key = `${platform}-${arch}`;
+  const url = URLS[key] || URLS[`${platform}-x64`]; // x64 fallback
+  if (!url) throw new Error(`Desteklenmeyen platform: ${platform}-${arch}`);
 
   const torBinDir = path.join(app.getPath("userData"), "tor-bin");
   fs.mkdirSync(torBinDir, { recursive: true });
@@ -136,23 +180,30 @@ export async function downloadTor(): Promise<void> {
 
   await new Promise<void>((resolve, reject) => {
     const file = fs.createWriteStream(tarPath);
-    const request = (url.startsWith("https") ? https : http).get(url, (response) => {
-      const total = parseInt(response.headers["content-length"] || "0", 10);
-      let downloaded = 0;
+    const request = (url.startsWith("https") ? https : http).get(
+      url,
+      (response) => {
+        const total = parseInt(response.headers["content-length"] || "0", 10);
+        let downloaded = 0;
 
-      response.on("data", (chunk: Buffer) => {
-        downloaded += chunk.length;
-        if (total > 0) {
-          emit("downloading", Math.round((downloaded / total) * 100), "Tor indiriliyor...");
-        }
-      });
+        response.on("data", (chunk: Buffer) => {
+          downloaded += chunk.length;
+          if (total > 0) {
+            emit(
+              "downloading",
+              Math.round((downloaded / total) * 100),
+              "Tor indiriliyor...",
+            );
+          }
+        });
 
-      response.pipe(file);
-      file.on("finish", () => {
-        file.close();
-        resolve();
-      });
-    });
+        response.pipe(file);
+        file.on("finish", () => {
+          file.close();
+          resolve();
+        });
+      },
+    );
     request.on("error", reject);
   });
 
@@ -197,10 +248,14 @@ export async function startTor(): Promise<void> {
 
   return new Promise((resolve, reject) => {
     const tor = spawn(torBin!, [
-      "--SocksPort", String(TOR_SOCKS_PORT),
-      "--ControlPort", String(TOR_CONTROL_PORT),
-      "--DataDirectory", dataDir,
-      "--Log", "notice stdout",
+      "--SocksPort",
+      String(TOR_SOCKS_PORT),
+      "--ControlPort",
+      String(TOR_CONTROL_PORT),
+      "--DataDirectory",
+      dataDir,
+      "--Log",
+      "notice stdout",
     ]);
 
     torProcess = tor;
@@ -218,7 +273,11 @@ export async function startTor(): Promise<void> {
       const match = text.match(/Bootstrapped (\d+)%/);
       if (match) {
         bootstrapProgress = parseInt(match[1], 10);
-        emit("bootstrapping", bootstrapProgress, `Tor ağına bağlanıyor... %${bootstrapProgress}`);
+        emit(
+          "bootstrapping",
+          bootstrapProgress,
+          `Tor ağına bağlanıyor... %${bootstrapProgress}`,
+        );
 
         if (bootstrapProgress >= 100) {
           clearTimeout(timeout);

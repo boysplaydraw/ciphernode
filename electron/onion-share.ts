@@ -17,7 +17,16 @@ interface OnionSession {
   onionAddress: string;
   localPort: number;
   server: http.Server;
-  files: Map<string, { name: string; data: Buffer; mimeType: string; downloads: number; maxDownloads: number }>;
+  files: Map<
+    string,
+    {
+      name: string;
+      data: Buffer;
+      mimeType: string;
+      downloads: number;
+      maxDownloads: number;
+    }
+  >;
   expiresAt: number;
   token: string;
 }
@@ -28,7 +37,11 @@ const activeSessions = new Map<string, OnionSession>();
 class TorControl {
   private socket: net.Socket | null = null;
   private buffer = "";
-  private waiters: Array<{ resolve: (s: string) => void; reject: (e: Error) => void }> = [];
+  private accumulated = "";
+  private waiters: Array<{
+    resolve: (s: string) => void;
+    reject: (e: Error) => void;
+  }> = [];
 
   async connect(): Promise<void> {
     return new Promise((resolve, reject) => {
@@ -50,12 +63,21 @@ class TorControl {
     this.buffer = lines.pop() || "";
 
     for (const line of lines) {
-      if (this.waiters.length > 0 && /^\d{3} /.test(line)) {
+      if (!line) continue;
+      // Multi-line devam satırı: "250-..." → biriktir
+      if (/^\d{3}-/.test(line)) {
+        this.accumulated += line + "\n";
+        continue;
+      }
+      // Son satır: "250 ..." → tüm yanıtı resolve et
+      if (/^\d{3} /.test(line) && this.waiters.length > 0) {
         const waiter = this.waiters.shift()!;
+        const fullResponse = this.accumulated + line;
+        this.accumulated = "";
         if (line.startsWith("2")) {
-          waiter.resolve(line);
+          waiter.resolve(fullResponse);
         } else {
-          waiter.reject(new Error(`Tor Control error: ${line}`));
+          waiter.reject(new Error(`Tor Control error: ${fullResponse}`));
         }
       }
     }
@@ -73,20 +95,36 @@ class TorControl {
   }
 
   async authenticate(): Promise<void> {
-    await this.send("AUTHENTICATE");
+    // Önce PROTOCOLINFO ile auth metodunu öğren
+    try {
+      const info = await this.send("PROTOCOLINFO 1");
+      // Cookie auth
+      const cookieMatch = info.match(/COOKIEFILE="([^"]+)"/);
+      if (cookieMatch) {
+        const cookiePath = cookieMatch[1];
+        const cookie = require("fs").readFileSync(cookiePath);
+        const cookieHex = Buffer.from(cookie).toString("hex");
+        await this.send(`AUTHENTICATE ${cookieHex}`);
+        return;
+      }
+      // NULL auth (ControlPort açıksa auth gerekmez)
+      await this.send("AUTHENTICATE");
+    } catch {
+      // Son çare: şifresiz dene
+      await this.send("AUTHENTICATE");
+    }
   }
 
   async createEphemeralOnionService(localPort: number): Promise<string> {
     // ED25519-V3 ephemeral onion service oluştur
     const response = await this.send(
-      `ADD_ONION NEW:ED25519-V3 Flags=DiscardPK Port=80,${localPort}`
+      `ADD_ONION NEW:ED25519-V3 Flags=DiscardPK Port=80,${localPort}`,
     );
 
-    // "250-ServiceID=..." satırından .onion adresini ayıkla
-    const match = response.match(/ServiceID=([a-z2-7]+)/i);
+    // Multi-line yanıtta "ServiceID=..." satırını ara
+    const match = response.match(/ServiceID=([a-z2-7]{56})/i);
     if (!match) {
-      // Multi-line yanıt için buffer'dan oku
-      throw new Error("Could not get onion address from response");
+      throw new Error("Could not get onion address from Tor Control response");
     }
 
     return `${match[1]}.onion`;
@@ -123,7 +161,16 @@ export async function createOnionShare(params: {
   const token = crypto.randomBytes(16).toString("hex");
 
   // Yerel HTTP sunucu
-  const fileMap = new Map<string, { name: string; data: Buffer; mimeType: string; downloads: number; maxDownloads: number }>();
+  const fileMap = new Map<
+    string,
+    {
+      name: string;
+      data: Buffer;
+      mimeType: string;
+      downloads: number;
+      maxDownloads: number;
+    }
+  >();
   for (const f of files) {
     const fileId = crypto.randomBytes(8).toString("hex");
     fileMap.set(fileId, { ...f, downloads: 0, maxDownloads });
@@ -179,7 +226,9 @@ export async function createOnionShare(params: {
     res.end(file.data);
 
     // Tüm dosyalar max indirmeye ulaştıysa sunucuyu kapat
-    const allDone = Array.from(fileMap.values()).every(f => f.downloads >= f.maxDownloads);
+    const allDone = Array.from(fileMap.values()).every(
+      (f) => f.downloads >= f.maxDownloads,
+    );
     if (allDone) {
       setTimeout(() => closeOnionSession(sessionId), 5000);
     }
@@ -227,7 +276,11 @@ export function closeOnionSession(sessionId: string): void {
   }
 }
 
-export function getActiveSessions(): Array<{ sessionId: string; onionAddress: string; expiresAt: number }> {
+export function getActiveSessions(): Array<{
+  sessionId: string;
+  onionAddress: string;
+  expiresAt: number;
+}> {
   return Array.from(activeSessions.entries()).map(([id, s]) => ({
     sessionId: id,
     onionAddress: s.onionAddress,

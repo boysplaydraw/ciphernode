@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   ciphernode-relay:
     build:
@@ -9,11 +7,18 @@ services:
     restart: unless-stopped
     ports:
       - "5000:5000"
+    env_file:
+      - path: .env
+        required: false
     environment:
       - NODE_ENV=production
       - PORT=5000
-      - MESSAGE_TTL_MS=300000
-      - CLEANUP_INTERVAL_MS=60000
+      - HOST=0.0.0.0
+      - MESSAGE_TTL_MS=${MESSAGE_TTL_MS:-86400000}
+      - FILE_TTL_MS=${FILE_TTL_MS:-86400000}
+      - MAX_FILE_SIZE_MB=${MAX_FILE_SIZE_MB:-100}
+      - MAX_FILE_DOWNLOADS=${MAX_FILE_DOWNLOADS:-10}
+      - ONION_ADDRESS=${ONION_ADDRESS:-}
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://localhost:5000/api/health"]
       interval: 30s

@@ -1,0 +1,84 @@
+name: CipherNode Relay
+version: "3.8"
+
+# ============================================================
+# CipherNode için CasaOS Uygulama Manifestosu
+# Kurulum: CasaOS → App Store → Custom Install → Bu dosyayı yapıştır
+# ============================================================
+
+services:
+  ciphernode:
+    image: node:20-alpine
+    container_name: ciphernode-relay
+    restart: unless-stopped
+    working_dir: /app
+    command: >
+      sh -c "
+        apk add --no-cache git &&
+        git clone https://github.com/merorasto/ciphernode /app 2>/dev/null || (cd /app && git pull) &&
+        npm ci --omit=dev &&
+        npm run server:build &&
+        node server_dist/index.js
+      "
+    ports:
+      - "5000:5000"
+    environment:
+      - NODE_ENV=production
+      - PORT=5000
+      - HOST=0.0.0.0
+    volumes:
+      - /DATA/AppData/ciphernode:/app/data
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:5000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    x-casaos:
+      envs:
+        - container: PORT
+          description:
+            en_us: Server port (default 5000)
+        - container: HOST
+          description:
+            en_us: Bind address (0.0.0.0 for all interfaces)
+      ports:
+        - container: "5000"
+          description:
+            en_us: CipherNode Relay HTTP port
+      volumes:
+        - container: /app/data
+          description:
+            en_us: Application data directory
+
+x-casaos:
+  architectures:
+    - amd64
+    - arm64
+    - arm
+  main: ciphernode
+  author: CipherNode
+  category: Social
+  description:
+    en_us: |
+      End-to-end encrypted, anonymous messaging relay server.
+      Supports Tor (.onion), P2P mode, file sharing, and anonymous matching.
+      No logs, no tracking, complete control.
+    tr_tr: |
+      Uçtan uca şifreli, anonim mesajlaşma relay sunucusu.
+      Tor (.onion), P2P modu, dosya paylaşımı ve anonim eşleştirme desteği.
+      Kayıt yok, izleme yok, tam kontrol.
+  developer: CipherNode
+  hostname: ""
+  icon: https://raw.githubusercontent.com/merorasto/ciphernode/main/assets/icon.png
+  index: /
+  is_uncontrolled: false
+  port_map: "5000"
+  scheme: http
+  store_app_id: ciphernode-relay
+  tagline:
+    en_us: Censorship-resistant encrypted messaging
+    tr_tr: Sansüre dayanıklı şifreli mesajlaşma
+  thumbnail: ""
+  title:
+    en_us: CipherNode Relay
+    tr_tr: CipherNode Röle

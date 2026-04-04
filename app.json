@@ -22,7 +22,8 @@
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
       "package": "com.ciphernode.app",
-      "usesCleartextTraffic": true
+      "usesCleartextTraffic": true,
+      "versionCode": 9
     },
     "web": {
       "output": "single",
@@ -76,6 +77,12 @@
         "projectId": "f94664a7-d159-4608-ac06-44ff53dc20f6"
       }
     },
-    "owner": "merorasto"
+    "owner": "merorasto",
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/f94664a7-d159-4608-ac06-44ff53dc20f6"
+    }
   }
 }

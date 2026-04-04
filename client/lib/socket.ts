@@ -201,7 +201,9 @@ export async function initSocket(
   });
 
   socket.on("group:message", (msg) => {
-    groupMessageListeners.forEach((cb) => cb(msg));
+    const decoded = stegDecode(msg.encrypted);
+    const processedMsg = decoded ? { ...msg, encrypted: decoded } : msg;
+    groupMessageListeners.forEach((cb) => cb(processedMsg));
   });
 
   socket.on("typing", (data) => {
@@ -328,10 +330,11 @@ export function sendGroupMessage(
   content: string,
 ): void {
   if (socket?.connected && currentUserId) {
+    const payload = steganographyEnabled ? stegEncode(encrypted) : encrypted;
     socket.emit("group:message", {
       groupId,
       from: currentUserId,
-      encrypted,
+      encrypted: payload,
       content,
     });
   }

@@ -210,6 +210,13 @@ export async function shareFile(params: {
     throw new Error("file veya fileBase64 gerekli");
   }
 
+  // 100 MB limit — base64 bellek taşması önlemi
+  const MAX_FILE_SIZE = 100 * 1024 * 1024;
+  const checkSize = rawFile?.size ?? fileSizeParam ?? 0;
+  if (checkSize > MAX_FILE_SIZE) {
+    throw new Error(`Dosya çok büyük. Maksimum boyut: 100 MB (mevcut: ${(checkSize / (1024 * 1024)).toFixed(1)} MB)`);
+  }
+
   const actualFileName = rawFile?.name || fileNameParam || "file";
   const actualMimeType = rawFile?.type || fileMimeTypeParam || "application/octet-stream";
   const actualFileSize = rawFile?.size || fileSizeParam || 0;
@@ -262,7 +269,7 @@ export async function shareFile(params: {
   const encryptedBase64 = arrayBufferToBase64(encrypted);
   const apiUrl = getApiUrl();
 
-  const response = await fetch(`${apiUrl}api/files/upload`, {
+  const response = await fetch(new URL("api/files/upload", apiUrl).toString(), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -307,7 +314,7 @@ export async function downloadAndDecryptFile(params: {
   });
 
   const apiUrl = getApiUrl();
-  const response = await fetch(`${apiUrl}api/files/${fileId}`);
+  const response = await fetch(new URL(`api/files/${fileId}`, apiUrl).toString());
 
   if (!response.ok) {
     const err = await response

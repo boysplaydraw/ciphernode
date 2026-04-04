@@ -8,7 +8,6 @@ import {
   Platform,
 } from "react-native";
 import { useNavigation } from "@react-navigation/native";
-import { useHeaderHeight } from "@react-navigation/elements";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
@@ -23,7 +22,6 @@ import { useLanguage } from "@/constants/language";
 
 export default function CreateGroupScreen() {
   const navigation = useNavigation();
-  const headerHeight = useHeaderHeight();
   const insets = useSafeAreaInsets();
   const { identity } = useIdentity();
   const { language } = useLanguage();
@@ -136,7 +134,7 @@ export default function CreateGroupScreen() {
       contentContainerStyle={[
         styles.content,
         {
-          paddingTop: headerHeight + Spacing.xl,
+          paddingTop: Spacing.lg,
           paddingBottom: insets.bottom + Spacing.xl,
         },
       ]}

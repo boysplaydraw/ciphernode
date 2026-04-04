@@ -247,14 +247,15 @@ export default function SettingsScreen() {
           );
           return;
         } else {
-          // Mobil: expo-local-authentication
+          // Mobil: expo-local-authentication (biyometrik yoksa PIN/şifre ekranı açar)
           const result = await LocalAuthentication.authenticateAsync({
             promptMessage:
               currentLanguage === "tr"
                 ? "Biyometrik kilidi etkinleştirmek için doğrulayın"
                 : "Authenticate to enable biometric lock",
             fallbackLabel:
-              currentLanguage === "tr" ? "Şifre kullan" : "Use password",
+              currentLanguage === "tr" ? "PIN / Şifre" : "PIN / Password",
+            disableDeviceFallback: false,
           });
           if (!result.success) return;
         }

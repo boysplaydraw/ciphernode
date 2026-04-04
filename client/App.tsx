@@ -235,13 +235,25 @@ export default function App() {
         );
         if (result.success) setIsLocked(false);
       } else {
+        const promptMessage =
+          language === "tr"
+            ? "CipherNode'u açmak için doğrulayın"
+            : "Authenticate to open CipherNode";
+
+        // SecurityLevel: 0=none, 1=PIN/password, 2=biometric(weak), 3=biometric(strong)
+        const level = await LocalAuthentication.getEnrolledLevelAsync();
+        if (level === 0) {
+          // Cihazda herhangi bir kilit yok — doğrudan aç
+          setIsLocked(false);
+          return;
+        }
+
         const result = await LocalAuthentication.authenticateAsync({
-          promptMessage:
-            language === "tr"
-              ? "CipherNode'u açmak için doğrulayın"
-              : "Authenticate to open CipherNode",
-          fallbackLabel: language === "tr" ? "Şifre kullan" : "Use password",
+          promptMessage,
+          fallbackLabel: language === "tr" ? "PIN / Şifre" : "PIN / Password",
           cancelLabel: language === "tr" ? "İptal" : "Cancel",
+          // false = biyometrik başarısız olursa cihaz PIN/şifresine düş
+          disableDeviceFallback: false,
         });
         if (result.success) setIsLocked(false);
       }

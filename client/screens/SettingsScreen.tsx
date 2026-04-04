@@ -986,32 +986,34 @@ export default function SettingsScreen() {
                 />
               }
             />
-            <SettingsRow
-              icon="battery"
-              title={
-                currentLanguage === "tr" ? "Düşük Güç Modu" : "Low Power Mode"
-              }
-              subtitle={
-                currentLanguage === "tr"
-                  ? "Animasyonları ve UI efektlerini kapatır, pil ömrünü uzatır"
-                  : "Disable animations and effects to save battery"
-              }
-              rightElement={
-                <Switch
-                  value={privacySettings.lowPowerMode}
-                  onValueChange={(v) => handleToggle("lowPowerMode", v)}
-                  trackColor={{
-                    false: Colors.dark.border,
-                    true: Colors.dark.warning,
-                  }}
-                  thumbColor={
-                    privacySettings.lowPowerMode
-                      ? Colors.dark.text
-                      : Colors.dark.textSecondary
-                  }
-                />
-              }
-            />
+            {Platform.OS !== "web" && !isElectron() ? (
+              <SettingsRow
+                icon="battery"
+                title={
+                  currentLanguage === "tr" ? "Düşük Güç Modu" : "Low Power Mode"
+                }
+                subtitle={
+                  currentLanguage === "tr"
+                    ? "Animasyonları ve UI efektlerini kapatır, pil ömrünü uzatır"
+                    : "Disable animations and effects to save battery"
+                }
+                rightElement={
+                  <Switch
+                    value={privacySettings.lowPowerMode}
+                    onValueChange={(v) => handleToggle("lowPowerMode", v)}
+                    trackColor={{
+                      false: Colors.dark.border,
+                      true: Colors.dark.warning,
+                    }}
+                    thumbColor={
+                      privacySettings.lowPowerMode
+                        ? Colors.dark.text
+                        : Colors.dark.textSecondary
+                    }
+                  />
+                }
+              />
+            ) : null}
           </View>
         </View>
 

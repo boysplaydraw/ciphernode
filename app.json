@@ -35,6 +35,7 @@
       "en": "./locales/en.json"
     },
     "plugins": [
+      "react-native-webrtc",
       [
         "expo-splash-screen",
         {

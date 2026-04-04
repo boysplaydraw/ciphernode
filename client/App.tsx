@@ -50,6 +50,10 @@ import {
   setP2POnlyMode,
 } from "@/lib/socket";
 import { getPrivacySettings } from "@/lib/storage";
+import {
+  isElectron,
+  electronBiometricAuthenticate,
+} from "@/lib/electron-bridge";
 
 export default function App() {
   const [isLoading, setIsLoading] = useState(true);
@@ -59,6 +63,7 @@ export default function App() {
   const [isLocked, setIsLocked] = useState(false);
   const [biometricEnabled, setBiometricEnabled] = useState(false);
   const appState = useRef<AppStateStatus>(AppState.currentState);
+  const biometricUnlockRef = useRef<(() => void) | null>(null);
 
   useEffect(() => {
     initApp();
@@ -222,19 +227,36 @@ export default function App() {
 
   const handleBiometricUnlock = useCallback(async () => {
     try {
-      const result = await LocalAuthentication.authenticateAsync({
-        promptMessage:
+      if (isElectron()) {
+        const result = await electronBiometricAuthenticate(
           language === "tr"
             ? "CipherNode'u açmak için doğrulayın"
             : "Authenticate to open CipherNode",
-        fallbackLabel: language === "tr" ? "Şifre kullan" : "Use password",
-        cancelLabel: language === "tr" ? "İptal" : "Cancel",
-      });
-      if (result.success) {
-        setIsLocked(false);
+        );
+        if (result.success) setIsLocked(false);
+      } else {
+        const result = await LocalAuthentication.authenticateAsync({
+          promptMessage:
+            language === "tr"
+              ? "CipherNode'u açmak için doğrulayın"
+              : "Authenticate to open CipherNode",
+          fallbackLabel: language === "tr" ? "Şifre kullan" : "Use password",
+          cancelLabel: language === "tr" ? "İptal" : "Cancel",
+        });
+        if (result.success) setIsLocked(false);
       }
     } catch {}
   }, [language]);
+
+  // Ref'i güncel tut — isLocked effect'i döngüye girmeden handler'ı çağırabilsin
+  biometricUnlockRef.current = handleBiometricUnlock;
+
+  // Kilit ekranı açıldığında biyometrik diyaloğu otomatik tetikle
+  useEffect(() => {
+    if (!isLocked) return;
+    const timer = setTimeout(() => biometricUnlockRef.current?.(), 300);
+    return () => clearTimeout(timer);
+  }, [isLocked]);
 
   const handleSetLanguage = useCallback((lang: Language) => {
     setLanguageState(lang);

@@ -13,11 +13,13 @@ contextBridge.exposeInMainWorld("electronAPI", {
     disable: () => ipcRenderer.invoke("tor:disable"),
     getStatus: () => ipcRenderer.invoke("tor:status"),
     verify: () => ipcRenderer.invoke("tor:verify"),
-    onStatus: (callback: (status: {
-      stage: string;
-      progress?: number;
-      message?: string;
-    }) => void) => {
+    onStatus: (
+      callback: (status: {
+        stage: string;
+        progress?: number;
+        message?: string;
+      }) => void,
+    ) => {
       ipcRenderer.on("tor:status-update", (_event, status) => callback(status));
       return () => ipcRenderer.removeAllListeners("tor:status-update");
     },
@@ -30,14 +32,28 @@ contextBridge.exposeInMainWorld("electronAPI", {
       maxDownloads?: number;
       expiresInMs?: number;
     }) => ipcRenderer.invoke("onionshare:create", params),
-    close: (sessionId: string) => ipcRenderer.invoke("onionshare:close", sessionId),
+    close: (sessionId: string) =>
+      ipcRenderer.invoke("onionshare:close", sessionId),
     list: () => ipcRenderer.invoke("onionshare:list"),
   },
 
   // ── Biyometrik ───────────────────────────────────────────────────────
   biometric: {
     isAvailable: () => ipcRenderer.invoke("biometric:isAvailable"),
-    authenticate: (reason: string) => ipcRenderer.invoke("biometric:authenticate", reason),
+    authenticate: (reason: string) =>
+      ipcRenderer.invoke("biometric:authenticate", reason),
+  },
+
+  // ── WebTorrent ───────────────────────────────────────────────────────
+  webtorrent: {
+    seed: (params: { dataBase64: string; fileName: string; mimeType: string }) =>
+      ipcRenderer.invoke("webtorrent:seed", params),
+    download: (params: { magnetURI: string }) =>
+      ipcRenderer.invoke("webtorrent:download", params),
+    progress: (infoHash: string) =>
+      ipcRenderer.invoke("webtorrent:progress", infoHash),
+    remove: (infoHash: string) =>
+      ipcRenderer.invoke("webtorrent:remove", infoHash),
   },
 
   // ── Platform bilgisi ─────────────────────────────────────────────────

@@ -598,6 +598,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
       },
     );
 
+    // ── WebRTC SIGNALING RELAY ─────────────────────────────────────────
+    // Sunucu SDP/ICE mesajlarını sadece yönlendirir — içeriğini görmez
+
+    socket.on("webrtc:offer", (data: { peerId: string; sdp: unknown; from: string }) => {
+      const targetSocket = connectedUsers.get(data.peerId);
+      if (targetSocket) {
+        io.to(targetSocket).emit("webrtc:offer", { peerId: data.from, sdp: data.sdp });
+      }
+    });
+
+    socket.on("webrtc:answer", (data: { peerId: string; sdp: unknown; from: string }) => {
+      const targetSocket = connectedUsers.get(data.peerId);
+      if (targetSocket) {
+        io.to(targetSocket).emit("webrtc:answer", { peerId: data.from, sdp: data.sdp });
+      }
+    });
+
+    socket.on("webrtc:ice", (data: { peerId: string; candidate: unknown; from: string }) => {
+      const targetSocket = connectedUsers.get(data.peerId);
+      if (targetSocket) {
+        io.to(targetSocket).emit("webrtc:ice", { peerId: data.from, candidate: data.candidate });
+      }
+    });
+
     socket.on("disconnect", () => {
       for (const [userId, socketId] of connectedUsers.entries()) {
         if (socketId === socket.id) {

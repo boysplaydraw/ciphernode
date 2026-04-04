@@ -51,6 +51,20 @@ declare global {
           Array<{ sessionId: string; onionAddress: string; expiresAt: number }>
         >;
       };
+      webtorrent: {
+        seed: (params: { dataBase64: string; fileName: string; mimeType: string }) =>
+          Promise<{ magnetURI: string; infoHash: string }>;
+        download: (params: { magnetURI: string }) =>
+          Promise<{ fileName: string; dataBase64: string; mimeType: string }>;
+        progress: (infoHash: string) => Promise<{
+          progress: number;
+          downloadSpeed: number;
+          uploadSpeed: number;
+          numPeers: number;
+          done: boolean;
+        } | null>;
+        remove: (infoHash: string) => Promise<{ success: boolean; error?: string }>;
+      };
       platform: string;
       isElectron: boolean;
       app: {

@@ -97,6 +97,7 @@ type MatchingCallback = (event: MatchingEvent) => void;
 type UserOnlineCallback = (data: { userId: string; publicKey: string }) => void;
 
 type FileShareCallback = (notification: IncomingFileNotification) => void;
+type WebRTCSignalCallback = (event: string, data: unknown) => void;
 
 const messageListeners: MessageCallback[] = [];
 const groupMessageListeners: GroupMessageCallback[] = [];
@@ -106,6 +107,7 @@ const torStatusListeners: TorStatusCallback[] = [];
 const matchingListeners: MatchingCallback[] = [];
 const userOnlineListeners: UserOnlineCallback[] = [];
 const fileShareListeners: FileShareCallback[] = [];
+const webrtcSignalListeners: WebRTCSignalCallback[] = [];
 
 export async function initSocket(
   userId: string,
@@ -292,6 +294,11 @@ export async function initSocket(
   socket.on("file:incoming", (d: IncomingFileNotification) => {
     fileShareListeners.forEach((cb) => cb(d));
   });
+
+  // WebRTC signaling
+  socket.on("webrtc:offer", (d) => webrtcSignalListeners.forEach((cb) => cb("webrtc:offer", d)));
+  socket.on("webrtc:answer", (d) => webrtcSignalListeners.forEach((cb) => cb("webrtc:answer", d)));
+  socket.on("webrtc:ice", (d) => webrtcSignalListeners.forEach((cb) => cb("webrtc:ice", d)));
 
   // Matching dosya paylaşımı (server "matching:file_incoming" olarak emit ediyor)
   socket.on(
@@ -548,6 +555,22 @@ export function onFileShare(callback: FileShareCallback): () => void {
     const index = fileShareListeners.indexOf(callback);
     if (index > -1) fileShareListeners.splice(index, 1);
   };
+}
+
+/** WebRTC sinyal olaylarını dinle */
+export function onWebRTCSignal(callback: WebRTCSignalCallback): () => void {
+  webrtcSignalListeners.push(callback);
+  return () => {
+    const index = webrtcSignalListeners.indexOf(callback);
+    if (index > -1) webrtcSignalListeners.splice(index, 1);
+  };
+}
+
+/** WebRTC signaling mesajı gönder */
+export function sendWebRTCSignal(event: string, data: unknown): void {
+  if (socket?.connected) {
+    socket.emit(event, { ...( data as object), from: currentUserId });
+  }
 }
 
 /** Bir kullanıcı çevrimiçi olduğunda (public key güncellemesi için) */

@@ -91,13 +91,9 @@
     "zod": "^3.24.2",
     "zod-validation-error": "^3.4.0"
   },
-  "optionalDependencies": {
-    "webtorrent": "^2.8.5"
-  },
   "devDependencies": {
     "@types/electron": "^1.6.12",
     "@types/express": "^4.17.21",
-    "@types/webtorrent": "^0.110.1",
     "@types/node": "24.10.0",
     "@types/react": "~19.1.0",
     "babel-plugin-module-resolver": "^5.0.3",

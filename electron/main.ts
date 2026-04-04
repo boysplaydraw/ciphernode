@@ -375,8 +375,12 @@ let _webtorrentClient: any = null;
 
 function getWebTorrentClient() {
   if (!_webtorrentClient) {
-    const WebTorrent = require("webtorrent");
-    _webtorrentClient = new WebTorrent();
+    try {
+      const WebTorrent = require("webtorrent");
+      _webtorrentClient = new WebTorrent();
+    } catch {
+      throw new Error("WebTorrent kurulu değil. Electron için: npm install webtorrent");
+    }
   }
   return _webtorrentClient;
 }

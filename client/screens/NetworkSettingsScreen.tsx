@@ -8,7 +8,6 @@ import {
   Platform,
 } from "react-native";
 import * as Clipboard from "expo-clipboard";
-import { useHeaderHeight } from "@react-navigation/elements";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
@@ -28,7 +27,6 @@ import { useLanguage } from "@/constants/language";
 type ServerType = "official" | "custom";
 
 export default function NetworkSettingsScreen() {
-  const headerHeight = useHeaderHeight();
   const insets = useSafeAreaInsets();
   const { language } = useLanguage();
 
@@ -244,7 +242,7 @@ export default function NetworkSettingsScreen() {
       contentContainerStyle={[
         styles.content,
         {
-          paddingTop: headerHeight + Spacing.xl,
+          paddingTop: Spacing.lg,
           paddingBottom: insets.bottom + Spacing.xl,
         },
       ]}

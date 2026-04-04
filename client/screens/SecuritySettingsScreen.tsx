@@ -8,7 +8,6 @@ import {
   Platform,
 } from "react-native";
 import { useNavigation } from "@react-navigation/native";
-import { useHeaderHeight } from "@react-navigation/elements";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 import * as Clipboard from "expo-clipboard";
@@ -22,7 +21,6 @@ import { useLanguage } from "@/constants/language";
 
 export default function SecuritySettingsScreen() {
   const navigation = useNavigation();
-  const headerHeight = useHeaderHeight();
   const insets = useSafeAreaInsets();
   const { identity, regenerate } = useIdentity();
   const { language } = useLanguage();
@@ -114,7 +112,7 @@ export default function SecuritySettingsScreen() {
         contentContainerStyle={[
           styles.content,
           {
-            paddingTop: headerHeight + Spacing.xl,
+            paddingTop: Spacing.lg,
             paddingBottom: insets.bottom + Spacing.xl,
           },
         ]}

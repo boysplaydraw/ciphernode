@@ -486,7 +486,7 @@ export default function SettingsScreen() {
   const verifyTorConnection = async (connect: boolean) => {
     try {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 8000);
+      const timeoutId = setTimeout(() => controller.abort(), 20000);
       const res = await fetch("https://check.torproject.org/api/ip", {
         signal: controller.signal,
       });
@@ -508,20 +508,38 @@ export default function SettingsScreen() {
         Alert.alert(
           currentLanguage === "tr" ? "Tor Tespit Edilmedi" : "Tor Not Detected",
           currentLanguage === "tr"
-            ? `Tor bağlantısı doğrulanamadı. Mevcut IP: ${data.IP}\n\nOrbot'u açıp 'VPN için Tüm Uygulamalar'ı etkinleştirdiğinizden emin olun.`
-            : `Tor connection could not be verified. Current IP: ${data.IP}\n\nMake sure Orbot is running with 'VPN for All Apps' enabled.`,
+            ? `Tor bağlantısı doğrulanamadı. Mevcut IP: ${data.IP}\n\nOrbot'u açıp 'Tüm Uygulamalar için VPN' modunu etkinleştirdiğinizden emin olun.`
+            : `Tor connection could not be verified. Current IP: ${data.IP}\n\nMake sure Orbot is running with 'VPN for All Apps' mode enabled.`,
         );
       }
     } catch {
-      setTorSettings((prev) => ({ ...prev, connectionStatus: "error" }));
-      await updateTorSettings({ connectionStatus: "error" });
+      // Ağ hatası veya timeout — Tor aktif olup check.torproject.org ulaşılamıyor olabilir
+      // Kullanıcıya "Yine de Kullan" seçeneği sun
       Alert.alert(
         currentLanguage === "tr"
           ? "Doğrulama Başarısız"
           : "Verification Failed",
         currentLanguage === "tr"
-          ? "Tor durumu doğrulanamadı. İnternet bağlantınızı kontrol edin."
-          : "Could not verify Tor status. Check your internet connection.",
+          ? "check.torproject.org'a ulaşılamadı. Tor yavaş olduğundan zaman aşımına uğramış olabilir.\n\nOrbot'un 'Tüm Uygulamalar için VPN' modunda çalıştığından emin olup tekrar deneyin, ya da Tor aktifken yine de devam edin."
+          : "Could not reach check.torproject.org. Tor may have timed out due to slow connection.\n\nMake sure Orbot runs in 'VPN for All Apps' mode and retry, or continue anyway with Tor active.",
+        [
+          {
+            text: currentLanguage === "tr" ? "İptal" : "Cancel",
+            style: "cancel",
+            onPress: async () => {
+              setTorSettings((prev) => ({ ...prev, enabled: false, connectionStatus: "disconnected" }));
+              await updateTorSettings({ enabled: false, connectionStatus: "disconnected" });
+            },
+          },
+          {
+            text: currentLanguage === "tr" ? "Yine de Kullan" : "Use Anyway",
+            onPress: async () => {
+              setTorSettings((prev) => ({ ...prev, connectionStatus: "connected" }));
+              await updateTorSettings({ connectionStatus: "connected" });
+              if (connect) await reconnectWithTor();
+            },
+          },
+        ],
       );
     }
   };

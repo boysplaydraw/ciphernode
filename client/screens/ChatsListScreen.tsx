@@ -25,7 +25,7 @@ import {
   getChats,
   archiveChat,
   archiveGroup,
-  deleteChat,
+  deleteContactAndChat,
   deleteGroup,
   type Chat,
   type Group,
@@ -291,7 +291,7 @@ export default function ChatsListScreen() {
               style: "destructive",
               onPress: async () => {
                 if (item.type === "chat") {
-                  await deleteChat(item.contactId);
+                  await deleteContactAndChat(item.contactId);
                 } else {
                   await deleteGroup(item.id);
                 }

@@ -8,7 +8,10 @@ import {
   AppStateStatus,
   Modal,
   Pressable,
+  Alert,
+  Platform,
 } from "react-native";
+import * as Updates from "expo-updates";
 import { NavigationContainer } from "@react-navigation/native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
@@ -117,6 +120,34 @@ export default function App() {
       appStateSub.remove();
     };
   }, [biometricEnabled]);
+
+  // Expo OTA güncelleme kontrolü (sadece production build'de çalışır)
+  useEffect(() => {
+    if (Platform.OS === "web") return;
+    checkForOTAUpdate();
+  }, []);
+
+  const checkForOTAUpdate = async () => {
+    try {
+      if (!Updates.isEmbeddedLaunch && __DEV__) return;
+      const update = await Updates.checkForUpdateAsync();
+      if (!update.isAvailable) return;
+      await Updates.fetchUpdateAsync();
+      Alert.alert(
+        "Güncelleme Hazır",
+        "Yeni bir güncelleme indirildi. Uygulamayı yeniden başlatmak ister misiniz?",
+        [
+          { text: "Sonra", style: "cancel" },
+          {
+            text: "Yeniden Başlat",
+            onPress: () => Updates.reloadAsync(),
+          },
+        ],
+      );
+    } catch {
+      // Çevrimdışı veya dev modda — sessizce atla
+    }
+  };
 
   const initApp = async () => {
     try {

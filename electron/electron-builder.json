@@ -90,5 +90,10 @@
     "createStartMenuShortcut": true
   },
 
-  "publish": null
+  "publish": {
+    "provider": "github",
+    "owner": "boysplaydraw",
+    "repo": "ciphernode",
+    "releaseType": "release"
+  }
 }

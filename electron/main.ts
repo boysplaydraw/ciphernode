@@ -16,12 +16,14 @@ import {
   shell,
   nativeTheme,
   Menu,
+  dialog,
   systemPreferences,
 } from "electron";
 import * as path from "node:path";
 import * as fs from "node:fs";
 import * as http from "node:http";
 import * as https from "node:https";
+import { autoUpdater } from "electron-updater";
 
 // ── Üretimde dist/ klasörünü gömülü HTTP sunucusuyla sun ──────────────
 // sandbox:true ile app:// custom protokolü renderer'dan erişilemiyor.
@@ -482,6 +484,78 @@ function setupWebTorrentIPC() {
   });
 }
 
+// ── Auto Updater ──────────────────────────────────────────────────────
+function setupAutoUpdater() {
+  if (IS_DEV) return; // Dev modda güncelleme kontrolü yapma
+
+  autoUpdater.autoDownload = true;
+  autoUpdater.autoInstallOnAppQuit = true;
+
+  autoUpdater.on("checking-for-update", () => {
+    mainWindow?.webContents.send("updater:status", { status: "checking" });
+  });
+
+  autoUpdater.on("update-available", (info) => {
+    mainWindow?.webContents.send("updater:status", {
+      status: "available",
+      version: info.version,
+    });
+  });
+
+  autoUpdater.on("update-not-available", () => {
+    mainWindow?.webContents.send("updater:status", { status: "not-available" });
+  });
+
+  autoUpdater.on("download-progress", (progress) => {
+    mainWindow?.webContents.send("updater:status", {
+      status: "downloading",
+      percent: Math.round(progress.percent),
+    });
+  });
+
+  autoUpdater.on("update-downloaded", (info) => {
+    mainWindow?.webContents.send("updater:status", {
+      status: "downloaded",
+      version: info.version,
+    });
+    dialog
+      .showMessageBox({
+        type: "info",
+        title: "Güncelleme Hazır",
+        message: `CipherNode ${info.version} indirildi.`,
+        detail: "Uygulamayı yeniden başlatarak güncellemeyi uygulayabilirsiniz.",
+        buttons: ["Yeniden Başlat", "Sonra"],
+        defaultId: 0,
+      })
+      .then(({ response }) => {
+        if (response === 0) autoUpdater.quitAndInstall();
+      });
+  });
+
+  autoUpdater.on("error", (err) => {
+    mainWindow?.webContents.send("updater:status", {
+      status: "error",
+      message: err.message,
+    });
+  });
+
+  // Uygulama açıldıktan 5 saniye sonra kontrol et
+  setTimeout(() => autoUpdater.checkForUpdates(), 5000);
+}
+
+// ── IPC: Güncelleme ───────────────────────────────────────────────────
+function setupUpdaterIPC() {
+  ipcMain.handle("updater:check", () => {
+    if (IS_DEV) return { status: "dev" };
+    autoUpdater.checkForUpdates();
+    return { status: "checking" };
+  });
+
+  ipcMain.handle("updater:install", () => {
+    autoUpdater.quitAndInstall();
+  });
+}
+
 // ── IPC: Uygulama ─────────────────────────────────────────────────────
 function setupAppIPC() {
   ipcMain.handle("app:version", () => app.getVersion());
@@ -513,7 +587,9 @@ app.whenReady().then(async () => {
   setupBiometricIPC();
   setupWebTorrentIPC();
   setupAppIPC();
+  setupUpdaterIPC();
   createWindow();
+  setupAutoUpdater();
 
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) {

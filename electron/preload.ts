@@ -56,6 +56,23 @@ contextBridge.exposeInMainWorld("electronAPI", {
       ipcRenderer.invoke("webtorrent:remove", infoHash),
   },
 
+  // ── Auto Updater ─────────────────────────────────────────────────────
+  updater: {
+    check: () => ipcRenderer.invoke("updater:check"),
+    install: () => ipcRenderer.invoke("updater:install"),
+    onStatus: (
+      callback: (info: {
+        status: string;
+        version?: string;
+        percent?: number;
+        message?: string;
+      }) => void,
+    ) => {
+      ipcRenderer.on("updater:status", (_event, info) => callback(info));
+      return () => ipcRenderer.removeAllListeners("updater:status");
+    },
+  },
+
   // ── Platform bilgisi ─────────────────────────────────────────────────
   platform: process.platform,
   isElectron: true,

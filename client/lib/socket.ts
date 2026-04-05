@@ -99,6 +99,15 @@ type UserOnlineCallback = (data: { userId: string; publicKey: string }) => void;
 type FileShareCallback = (notification: IncomingFileNotification) => void;
 type WebRTCSignalCallback = (event: string, data: unknown) => void;
 
+/** P2P büyük dosya transfer bildirimi (100 MB üstü dosyalar) */
+export interface P2PFileOffer {
+  from: string;
+  fileName: string;
+  fileSize: number;
+  mimeType: string;
+}
+type P2PFileOfferCallback = (data: P2PFileOffer) => void;
+
 const messageListeners: MessageCallback[] = [];
 const groupMessageListeners: GroupMessageCallback[] = [];
 const typingListeners: TypingCallback[] = [];
@@ -108,6 +117,7 @@ const matchingListeners: MatchingCallback[] = [];
 const userOnlineListeners: UserOnlineCallback[] = [];
 const fileShareListeners: FileShareCallback[] = [];
 const webrtcSignalListeners: WebRTCSignalCallback[] = [];
+const p2pFileOfferListeners: P2PFileOfferCallback[] = [];
 
 export async function initSocket(
   userId: string,
@@ -299,6 +309,11 @@ export async function initSocket(
   socket.on("webrtc:offer", (d) => webrtcSignalListeners.forEach((cb) => cb("webrtc:offer", d)));
   socket.on("webrtc:answer", (d) => webrtcSignalListeners.forEach((cb) => cb("webrtc:answer", d)));
   socket.on("webrtc:ice", (d) => webrtcSignalListeners.forEach((cb) => cb("webrtc:ice", d)));
+
+  // P2P büyük dosya bildirimi
+  socket.on("p2p:file-incoming", (d: P2PFileOffer) => {
+    p2pFileOfferListeners.forEach((cb) => cb(d));
+  });
 
   // Matching dosya paylaşımı (server "matching:file_incoming" olarak emit ediyor)
   socket.on(
@@ -554,6 +569,31 @@ export function onFileShare(callback: FileShareCallback): () => void {
   return () => {
     const index = fileShareListeners.indexOf(callback);
     if (index > -1) fileShareListeners.splice(index, 1);
+  };
+}
+
+/** P2P büyük dosya teklifi gönder (alıcıya WebRTC öncesi bildirim) */
+export function sendP2PFileOffer(
+  to: string,
+  info: Omit<P2PFileOffer, "from">,
+): void {
+  if (socket?.connected && currentUserId) {
+    socket.emit("p2p:file-offer", {
+      to,
+      from: currentUserId,
+      ...info,
+    });
+  }
+}
+
+/** P2P büyük dosya bildirimlerini dinle */
+export function onP2PFileIncoming(
+  callback: P2PFileOfferCallback,
+): () => void {
+  p2pFileOfferListeners.push(callback);
+  return () => {
+    const index = p2pFileOfferListeners.indexOf(callback);
+    if (index > -1) p2pFileOfferListeners.splice(index, 1);
   };
 }
 

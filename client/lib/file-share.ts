@@ -210,11 +210,11 @@ export async function shareFile(params: {
     throw new Error("file veya fileBase64 gerekli");
   }
 
-  // 100 MB limit — base64 bellek taşması önlemi
-  const MAX_FILE_SIZE = 100 * 1024 * 1024;
+  // Relay limiti — bu sınırın üstündeki dosyalar P2P'ye yönlendirilmeli
+  const RELAY_MAX = 100 * 1024 * 1024; // 100 MB
   const checkSize = rawFile?.size ?? fileSizeParam ?? 0;
-  if (checkSize > MAX_FILE_SIZE) {
-    throw new Error(`Dosya çok büyük. Maksimum boyut: 100 MB (mevcut: ${(checkSize / (1024 * 1024)).toFixed(1)} MB)`);
+  if (checkSize > RELAY_MAX) {
+    throw new Error(`Dosya relay için çok büyük. Maksimum: 100 MB (mevcut: ${(checkSize / (1024 * 1024)).toFixed(1)} MB). Büyük dosyalar P2P ile gönderilir.`);
   }
 
   const actualFileName = rawFile?.name || fileNameParam || "file";

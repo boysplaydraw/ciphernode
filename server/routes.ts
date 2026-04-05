@@ -622,6 +622,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
     });
 
+    // P2P büyük dosya bildirimi — WebRTC öncesi meta bilgi iletir
+    socket.on(
+      "p2p:file-offer",
+      (data: {
+        to: string;
+        from: string;
+        fileName: string;
+        fileSize: number;
+        mimeType: string;
+      }) => {
+        const targetSocket = connectedUsers.get(data.to);
+        if (targetSocket) {
+          io.to(targetSocket).emit("p2p:file-incoming", {
+            from: data.from,
+            fileName: data.fileName,
+            fileSize: data.fileSize,
+            mimeType: data.mimeType,
+          });
+        }
+      },
+    );
+
     socket.on("disconnect", () => {
       for (const [userId, socketId] of connectedUsers.entries()) {
         if (socketId === socket.id) {

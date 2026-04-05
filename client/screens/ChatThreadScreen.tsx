@@ -53,7 +53,12 @@ import {
   onMessage,
   sendFileShare,
   onFileShare,
+  sendWebRTCSignal,
+  onWebRTCSignal,
+  sendP2PFileOffer,
+  onP2PFileIncoming,
   type IncomingFileNotification,
+  type P2PFileOffer,
 } from "@/lib/socket";
 import {
   shareFile,
@@ -62,10 +67,23 @@ import {
   getFileIcon,
   scrubFileMetadata,
 } from "@/lib/file-share";
+import {
+  isWebRTCAvailable,
+  getTransferMethod,
+  sendFileP2P,
+  receiveFileP2P,
+} from "@/lib/webrtc-p2p";
+import { isElectron } from "@/lib/electron-bridge";
 import { getApiUrl } from "@/lib/query-client";
 import { getPrivacySettings } from "@/lib/storage";
 import type { ChatsStackParamList } from "@/navigation/ChatsStackNavigator";
 import { useIdentity } from "@/hooks/useIdentity";
+
+/** P2P ile alınan dosyalar için genişletilmiş bildirim tipi */
+type ExtendedFileNotification = IncomingFileNotification & {
+  p2pBuffer?: ArrayBuffer; // P2P ile alındıysa ham veri
+  p2pUri?: string;         // Android disk tabanlı P2P
+};
 
 type NavigationProp = NativeStackNavigationProp<
   ChatsStackParamList,
@@ -239,9 +257,11 @@ export default function ChatThreadScreen() {
     displayContent: string;
   } | null>(null);
   const [sendingFile, setSendingFile] = useState(false);
-  const [incomingFiles, setIncomingFiles] = useState<
-    IncomingFileNotification[]
-  >([]);
+  const [incomingFiles, setIncomingFiles] = useState<ExtendedFileNotification[]>([]);
+  // P2P bekleyen meta bilgisi: { from → {fileName, fileSize, mimeType} }
+  const p2pPendingMeta = useRef<Map<string, P2PFileOffer>>(new Map());
+  // P2P bekleyen offer SDP: { from → offerSdp }
+  const p2pPendingOffer = useRef<Map<string, RTCSessionDescriptionInit>>(new Map());
   const [sentFiles, setSentFiles] = useState<
     Array<{ fileId: string; fileName: string; fileSize: number }>
   >([]);
@@ -313,7 +333,7 @@ export default function ChatThreadScreen() {
     return unsubscribe;
   }, [contactId, loadData]);
 
-  // Gelen dosya bildirimlerini dinle
+  // Gelen dosya bildirimlerini dinle (relay)
   useEffect(() => {
     const unsubscribe = onFileShare((notification) => {
       if (notification.from === contactId) {
@@ -323,7 +343,95 @@ export default function ChatThreadScreen() {
     return unsubscribe;
   }, [contactId]);
 
-  // Dosya gönder
+  // P2P büyük dosya alımı — WebRTC DataChannel
+  useEffect(() => {
+    if (!isWebRTCAvailable()) return;
+
+    // 1. Adım: meta bilgisi geldi → offer bekle (veya tam tersi)
+    const unsubMeta = onP2PFileIncoming((data) => {
+      if (data.from !== contactId) return;
+      const pendingOffer = p2pPendingOffer.current.get(data.from);
+      if (pendingOffer) {
+        // Offer zaten gelmiş — hemen başlat
+        p2pPendingOffer.current.delete(data.from);
+        startP2PReceive(data, pendingOffer);
+      } else {
+        // Offer bekleniyor
+        p2pPendingMeta.current.set(data.from, data);
+      }
+    });
+
+    // 2. Adım: WebRTC offer geldi → meta bekle (veya tam tersi)
+    const unsubSignal = onWebRTCSignal(async (event, rawData: any) => {
+      if (event !== "webrtc:offer" || rawData.peerId !== contactId) return;
+      const offerSdp = rawData.sdp as RTCSessionDescriptionInit;
+      const pendingMeta = p2pPendingMeta.current.get(contactId);
+      if (pendingMeta) {
+        // Meta zaten gelmiş — hemen başlat
+        p2pPendingMeta.current.delete(contactId);
+        startP2PReceive(pendingMeta, offerSdp);
+      } else {
+        // Meta bekleniyor
+        p2pPendingOffer.current.set(contactId, offerSdp);
+        // 5 saniye içinde meta gelmezse temizle
+        setTimeout(() => p2pPendingOffer.current.delete(contactId), 5000);
+      }
+    });
+
+    return () => {
+      unsubMeta();
+      unsubSignal();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [contactId]);
+
+  const startP2PReceive = useCallback(
+    async (meta: P2PFileOffer, offerSdp: RTCSessionDescriptionInit) => {
+      const fakeId = `p2p_${Date.now()}`;
+      // Yükleme bildirimi göster
+      const placeholder: ExtendedFileNotification = {
+        from: meta.from,
+        fileId: fakeId,
+        fileName: meta.fileName,
+        fileSize: meta.fileSize,
+        mimeType: meta.mimeType,
+        encryptedKey: "__p2p__",
+        timestamp: Date.now(),
+      };
+      setIncomingFiles((prev) => [...prev, placeholder]);
+
+      try {
+        await receiveFileP2P({
+          peerId: meta.from,
+          offerSdp,
+          sendSignal: sendWebRTCSignal,
+          onSignalReceived: onWebRTCSignal,
+          onProgress: (p) => {
+            if (p.stage === "error") {
+              setIncomingFiles((prev) => prev.filter((f) => f.fileId !== fakeId));
+              Alert.alert("P2P Hata", p.message);
+            }
+          },
+          onFileReceived: (buffer, fileUri, fileName, mimeType) => {
+            setIncomingFiles((prev) =>
+              prev.map((f) =>
+                f.fileId === fakeId
+                  ? { ...f, p2pBuffer: buffer ?? undefined, p2pUri: fileUri ?? undefined }
+                  : f,
+              ),
+            );
+          },
+        });
+      } catch (err) {
+        setIncomingFiles((prev) => prev.filter((f) => f.fileId !== fakeId));
+        Alert.alert("P2P Hata", err instanceof Error ? err.message : "Dosya alınamadı");
+      }
+    },
+    [],
+  );
+
+  // Dosya gönder — akıllı yönlendirme
+  // ≤ 100 MB → relay sunucu | > 100 MB → P2P WebRTC chunk | > limit → hata
   const handleSendFile = useCallback(async () => {
     if (!contact?.publicKey) {
       Alert.alert("Hata", "Bu kişinin açık anahtarı yok. Dosya şifrelenemez.", [
@@ -340,22 +448,84 @@ export default function ChatThreadScreen() {
 
       if (result.canceled || !result.assets?.length) return;
       const asset = result.assets[0];
+      const fileSize = asset.size || 0;
+      const mimeType = asset.mimeType || "application/octet-stream";
 
       setSendingFile(true);
 
-      // autoMetadataScrubbing ayarını oku
-      const privacySettings = await getPrivacySettings();
+      const method = getTransferMethod(fileSize);
 
+      if (method === "too-large") {
+        Alert.alert(
+          "Dosya Çok Büyük",
+          `Bu dosya gönderilemez. Maksimum boyut: ${Platform.OS === "android" ? "1 GB" : "5 GB"}`,
+        );
+        return;
+      }
+
+      // ── P2P yolu (> 100 MB) ──────────────────────────────────────────
+      if (method === "p2p") {
+        // Alıcıya meta bildirim gönder
+        sendP2PFileOffer(contactId, {
+          fileName: asset.name,
+          fileSize,
+          mimeType,
+        });
+
+        // Chunk okuyucu fonksiyon
+        let readChunk: (offset: number, length: number) => Promise<ArrayBuffer>;
+
+        if (Platform.OS === "web") {
+          const response = await fetch(asset.uri);
+          const blob = await response.blob();
+          readChunk = async (offset, length) =>
+            blob.slice(offset, offset + length).arrayBuffer();
+        } else {
+          // Native: expo-file-system ile parça parça oku
+          readChunk = async (offset, length) => {
+            const b64 = await FileSystem.readAsStringAsync(asset.uri, {
+              encoding: FileSystem.EncodingType.Base64,
+              position: offset,
+              length,
+            });
+            const binary = atob(b64);
+            const bytes = new Uint8Array(binary.length);
+            for (let i = 0; i < binary.length; i++) {
+              bytes[i] = binary.charCodeAt(i);
+            }
+            return bytes.buffer;
+          };
+        }
+
+        await sendFileP2P({
+          peerId: contactId,
+          readChunk,
+          totalSize: fileSize,
+          fileName: asset.name,
+          mimeType,
+          sendSignal: sendWebRTCSignal,
+          onSignalReceived: onWebRTCSignal,
+          onProgress: (p) => {
+            if (p.stage === "error") Alert.alert("P2P Hata", p.message);
+          },
+        });
+
+        setSentFiles((prev) => [
+          ...prev,
+          { fileId: `p2p_${Date.now()}`, fileName: asset.name, fileSize },
+        ]);
+        return;
+      }
+
+      // ── Relay yolu (≤ 100 MB) ────────────────────────────────────────
+      const privacySettings = await getPrivacySettings();
       let fileId: string;
       let encryptedKey: string;
 
       if (Platform.OS === "web") {
-        // Web: fetch ile blob al, File nesnesi oluştur
         const response = await fetch(asset.uri);
         const fileBlob = await response.blob();
-        const file = new File([fileBlob], asset.name, {
-          type: asset.mimeType || "application/octet-stream",
-        });
+        const file = new File([fileBlob], asset.name, { type: mimeType });
         ({ fileId, encryptedKey } = await shareFile({
           file,
           recipientPublicKey: contact.publicKey,
@@ -366,15 +536,14 @@ export default function ChatThreadScreen() {
           },
         }));
       } else {
-        // Native (Android/iOS): base64 olarak oku, Blob oluşturmadan gönder
         const base64 = await FileSystem.readAsStringAsync(asset.uri, {
           encoding: FileSystem.EncodingType.Base64,
         });
         ({ fileId, encryptedKey } = await shareFile({
           fileBase64: base64,
           fileName: asset.name,
-          fileMimeType: asset.mimeType || "application/octet-stream",
-          fileSize: asset.size || 0,
+          fileMimeType: mimeType,
+          fileSize,
           recipientPublicKey: contact.publicKey,
           senderPrivateKey: identity?.privateKey,
           onProgress: (p) => {
@@ -383,18 +552,17 @@ export default function ChatThreadScreen() {
         }));
       }
 
-      // Alıcıya socket bildirimi gönder
       sendFileShare(contactId, {
         fileId,
         fileName: asset.name,
-        fileSize: asset.size || 0,
-        mimeType: asset.mimeType || "application/octet-stream",
+        fileSize,
+        mimeType,
         encryptedKey,
       });
 
       setSentFiles((prev) => [
         ...prev,
-        { fileId, fileName: asset.name, fileSize: asset.size || 0 },
+        { fileId, fileName: asset.name, fileSize },
       ]);
     } catch (err) {
       Alert.alert(
@@ -408,18 +576,57 @@ export default function ChatThreadScreen() {
 
   // Dosya indir ve aç
   const handleDownloadFile = useCallback(
-    async (notification: IncomingFileNotification) => {
-      if (!identity?.privateKey) {
-        Alert.alert("Hata", "Özel anahtar bulunamadı.");
-        return;
-      }
+    async (notification: ExtendedFileNotification) => {
       setDownloadingFile(notification.fileId);
       try {
-        const { data, dataBase64, name, mimeType } = await downloadAndDecryptFile({
-          fileId: notification.fileId,
-          encryptedKey: notification.encryptedKey,
-          recipientPrivateKey: identity.privateKey,
-        });
+        let data: Blob | null = null;
+        let dataBase64: string | null = null;
+        let name = notification.fileName;
+        let mimeType = notification.mimeType;
+
+        // P2P ile alınan dosya — zaten bellekte veya diskte
+        if (notification.encryptedKey === "__p2p__") {
+          if (notification.p2pBuffer) {
+            if (Platform.OS === "web") {
+              data = new Blob([notification.p2pBuffer], { type: mimeType });
+            } else {
+              const bytes = new Uint8Array(notification.p2pBuffer);
+              let binary = "";
+              for (let i = 0; i < bytes.length; i++) {
+                binary += String.fromCharCode(bytes[i]);
+              }
+              dataBase64 = btoa(binary);
+            }
+          } else if (notification.p2pUri) {
+            // Android disk tabanlı — doğrudan paylaş
+            await Sharing.shareAsync(notification.p2pUri, {
+              mimeType,
+              dialogTitle: name,
+            });
+            setIncomingFiles((prev) =>
+              prev.filter((f) => f.fileId !== notification.fileId),
+            );
+            return;
+          } else {
+            Alert.alert("Hata", "Dosya verisi bulunamadı.");
+            return;
+          }
+        } else {
+          // Relay — sunucudan indir ve deşifre et
+          if (!identity?.privateKey) {
+            Alert.alert("Hata", "Özel anahtar bulunamadı.");
+            return;
+          }
+          const result = await downloadAndDecryptFile({
+            fileId: notification.fileId,
+            encryptedKey: notification.encryptedKey,
+            recipientPrivateKey: identity.privateKey,
+          });
+          data = result.data;
+          dataBase64 = result.dataBase64;
+          name = result.name;
+          mimeType = result.mimeType;
+        }
 
         // Dosyayı tarayıcıda / cihazda aç
         if (Platform.OS === "web") {
@@ -453,6 +660,75 @@ export default function ChatThreadScreen() {
     },
     [identity],
   );
+
+  // Torrent olarak gönder (Electron only) — magnet URI mesaj olarak gider
+  const handleSendTorrent = useCallback(async () => {
+    if (!isElectron()) return;
+    if (!identity) return;
+
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: "*/*",
+        copyToCacheDirectory: true,
+      });
+      if (result.canceled || !result.assets?.length) return;
+      const asset = result.assets[0];
+
+      setSendingFile(true);
+
+      let base64: string;
+      if (Platform.OS === "web") {
+        const response = await fetch(asset.uri);
+        const blob = await response.blob();
+        base64 = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => {
+            const b64 = (reader.result as string).split(",")[1];
+            resolve(b64);
+          };
+          reader.onerror = reject;
+          reader.readAsDataURL(blob);
+        });
+      } else {
+        base64 = await FileSystem.readAsStringAsync(asset.uri, {
+          encoding: FileSystem.EncodingType.Base64,
+        });
+      }
+
+      const { seedTorrent } = await import("@/lib/webtorrent-bridge");
+      const { magnetURI } = await seedTorrent({
+        dataBase64: base64,
+        fileName: asset.name,
+        mimeType: asset.mimeType || "application/octet-stream",
+      });
+
+      // Magnet URI'yi mesaj olarak gönder
+      if (contact?.publicKey) {
+        const messageId = generateMessageId();
+        const magnetMsg = `🧲 Torrent: ${asset.name}\n${magnetURI}`;
+        const encryptedContent = await (async () => {
+          const { encryptMessage } = await import("@/lib/crypto");
+          return encryptMessage(magnetMsg, contact.publicKey, identity.privateKey);
+        })();
+        const msg = {
+          id: messageId,
+          content: magnetMsg,
+          encrypted: encryptedContent,
+          senderId: identity.id,
+          recipientId: contactId,
+          timestamp: Date.now(),
+          status: "sent" as const,
+        };
+        await saveMessage(contactId, msg);
+        socketSendMessage(contactId, encryptedContent, messageId);
+        setMessages((prev) => [...prev, msg]);
+      }
+    } catch (err) {
+      Alert.alert("Torrent Hata", err instanceof Error ? err.message : "Torrent oluşturulamadı");
+    } finally {
+      setSendingFile(false);
+    }
+  }, [contact, identity, contactId]);
 
   const handleSendMessage = useCallback(async () => {
     if (!inputText.trim() || !identity || !contact) return;
@@ -699,6 +975,27 @@ export default function ChatThreadScreen() {
               }
             />
           </Pressable>
+          {/* Torrent butonu — sadece Electron'da görünür */}
+          {isElectron() && (
+            <Pressable
+              onPress={handleSendTorrent}
+              disabled={sendingFile}
+              style={({ pressed }) => [
+                styles.attachButton,
+                pressed && { opacity: 0.7 },
+              ]}
+            >
+              <Feather
+                name="share-2"
+                size={18}
+                color={
+                  sendingFile
+                    ? Colors.dark.textDisabled
+                    : Colors.dark.primary
+                }
+              />
+            </Pressable>
+          )}
           <TextInput
             style={styles.input}
             value={inputText}

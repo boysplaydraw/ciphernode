@@ -556,11 +556,6 @@
         <div class="feature-desc">Dosyalar client-side şifrelendikten sonra yüklenir. İndirme limiti ve 24 saatlik TTL. AES anahtarı alıcının PGP anahtarıyla sarmalanır.</div>
       </div>
       <div class="feature-card">
-        <div class="feature-icon" style="background:rgba(184,119,255,.1)">🎲</div>
-        <div class="feature-title">Anonim Eşleştirme</div>
-        <div class="feature-desc">Gerçek kimlik paylaşılmadan rastgele kullanıcılarla bağlantı kurulur. Takma ad sistemi ile oturumlar izole edilir.</div>
-      </div>
-      <div class="feature-card">
         <div class="feature-icon" style="background:rgba(255,184,0,.1)">🔤</div>
         <div class="feature-title">Steganografi Modu</div>
         <div class="feature-desc">PGP şifreli payload'ı görünmez Unicode karakterlere gömer. Normal metin gibi görünen mesajlar aslında şifreli veri taşır.</div>
@@ -656,11 +651,11 @@
         <div class="download-desc">Ubuntu / Arch / Fedora</div>
         <div class="download-badge soon">Yakında</div>
       </a>
-      <a href="#webapp" class="download-card">
+      <a href="#selfhost" class="download-card">
         <div class="download-icon">🌐</div>
         <div class="download-name">Web Tarayıcı</div>
-        <div class="download-desc">Kurulum gerektirmez</div>
-        <div class="download-badge">PWA Destekli</div>
+        <div class="download-desc">Kendi sunucunu kur → /app</div>
+        <div class="download-badge soon">Sunucu Gerekli</div>
       </a>
     </div>
 
@@ -751,10 +746,10 @@
             <span class="comment"># Repo'yu klonla</span><br/>
             <span class="cmd">git clone</span> https://github.com/boysplaydraw/ciphernode<br/>
             <span class="cmd">cd</span> ciphernode<br/><br/>
-            <span class="comment"># Başlat</span><br/>
+            <span class="comment"># Başlat (otomatik HTTPS)</span><br/>
             <span class="cmd">docker compose up -d</span>
           </div>
-          <div class="selfhost-note">Port 5000 otomatik açılır. SSL için Cloudflare Tunnel veya <code>scripts/setup-ssl.sh</code> kullanın.</div>
+          <div class="selfhost-note">Otomatik self-signed SSL üretilir. Domain varsa <code>SSL_DOMAIN=relay.example.com</code> .env'e ekleyin → Let's Encrypt otomatik kurulur.</div>
         </div>
       </div>
 
@@ -768,14 +763,16 @@
         </div>
         <div class="selfhost-body">
           <div class="code-block">
-            <span class="comment"># Termux'ta çalıştır</span><br/>
+            <span class="comment"># Script'i indir ve çalıştır</span><br/>
+            <span class="cmd">curl -O</span> https://raw.githubusercontent.com/boysplaydraw/ciphernode/master/termux-start.sh<br/>
             <span class="cmd">bash termux-start.sh</span><br/><br/>
-            <span class="comment"># Tor hidden service ile</span><br/>
-            <span class="cmd">bash termux-start.sh</span> tor<br/><br/>
-            <span class="comment"># Cloudflare Tunnel ile</span><br/>
-            <span class="cmd">bash termux-start.sh</span> cloudflare
+            <span class="comment"># Tor ile</span><br/>
+            <span class="cmd">bash termux-start.sh</span> tor
           </div>
-          <div class="selfhost-note">Termux F-Droid'den indirilebilir. Tüm bağımlılıklar otomatik kurulur.</div>
+          <div class="selfhost-note">
+            Termux F-Droid'den indirilebilir. Tüm bağımlılıklar otomatik kurulur.<br/>
+            <a href="https://raw.githubusercontent.com/boysplaydraw/ciphernode/master/termux-start.sh" download style="color:var(--cyan);font-size:12px;">⬇ termux-start.sh indir</a>
+          </div>
         </div>
       </div>
 
@@ -789,14 +786,40 @@
         </div>
         <div class="selfhost-body">
           <div class="code-block">
-            <span class="comment"># Sunucu başlat</span><br/>
-            <span class="cmd">npm run server:build</span><br/>
-            <span class="cmd">npm run server:prod</span><br/><br/>
-            <span class="comment"># SSL (Let's Encrypt + nginx)</span><br/>
-            <span class="cmd">sudo bash</span> scripts/setup-ssl.sh \<br/>
-            &nbsp;&nbsp;relay.example.com
+            <span class="comment"># Script'i indir</span><br/>
+            <span class="cmd">curl -O</span> https://raw.githubusercontent.com/boysplaydraw/ciphernode/master/scripts/setup-ssl.sh<br/><br/>
+            <span class="comment"># SSL + Let's Encrypt kurulumu</span><br/>
+            <span class="cmd">sudo bash</span> setup-ssl.sh relay.example.com
           </div>
-          <div class="selfhost-note">Otomatik systemd servisi, sertifika yenileme ve reverse proxy kurulur.</div>
+          <div class="selfhost-note">
+            Otomatik systemd servisi, sertifika yenileme ve HTTPS kurulur.<br/>
+            <a href="https://raw.githubusercontent.com/boysplaydraw/ciphernode/master/scripts/setup-ssl.sh" download style="color:var(--cyan);font-size:12px;">⬇ setup-ssl.sh indir</a>
+          </div>
+        </div>
+      </div>
+
+      <div class="selfhost-card">
+        <div class="selfhost-header">
+          <span style="font-size:24px">🪟</span>
+          <div>
+            <div class="selfhost-platform">Windows</div>
+            <div style="font-size:12px;color:var(--text2)">PowerShell · Otomatik kurulum</div>
+          </div>
+        </div>
+        <div class="selfhost-body">
+          <div class="code-block">
+            <span class="comment"># PowerShell'i yönetici olarak aç</span><br/>
+            <span class="cmd">Set-ExecutionPolicy</span> Bypass -Scope Process<br/><br/>
+            <span class="comment"># Sunucu başlat</span><br/>
+            <span class="cmd">.\windows-start.ps1</span><br/><br/>
+            <span class="comment"># SSL + Let's Encrypt ile</span><br/>
+            <span class="cmd">.\windows-start.ps1</span> -Mode ssl -SslDomain relay.example.com
+          </div>
+          <div class="selfhost-note">
+            <a href="https://raw.githubusercontent.com/boysplaydraw/ciphernode/master/scripts/windows-start.ps1" download style="color:var(--cyan);font-size:12px;">⬇ windows-start.ps1 indir</a>
+            &nbsp;·&nbsp;
+            <a href="https://raw.githubusercontent.com/boysplaydraw/ciphernode/master/scripts/setup-ssl-windows.ps1" download style="color:var(--cyan);font-size:12px;">⬇ setup-ssl-windows.ps1 indir</a>
+          </div>
         </div>
       </div>
 
@@ -811,30 +834,16 @@
         <div class="selfhost-body">
           <div class="code-block">
             <span class="comment"># ngrok (SSL otomatik)</span><br/>
-            <span class="cmd">bash</span> scripts/setup-ngrok.sh TOKEN<br/><br/>
-            <span class="comment"># Cloudflare (ücretsiz, kayıt yok)</span><br/>
-            <span class="cmd">bash</span> scripts/setup-cloudflare.sh
+            <span class="cmd">bash</span> setup-ngrok.sh TOKEN<br/><br/>
+            <span class="comment"># Cloudflare (ücretsiz)</span><br/>
+            <span class="cmd">bash</span> setup-cloudflare.sh
           </div>
-          <div class="selfhost-note">URL otomatik gösterilir. Uygulamada Özel Sunucu olarak girin.</div>
-        </div>
-      </div>
-
-      <div class="selfhost-card">
-        <div class="selfhost-header">
-          <span style="font-size:24px">🏠</span>
-          <div>
-            <div class="selfhost-platform">CasaOS / Umbrel</div>
-            <div style="font-size:12px;color:var(--text2)">NAS · Raspberry Pi · Home Server</div>
+          <div class="selfhost-note">
+            URL otomatik gösterilir. Uygulamada Özel Sunucu olarak girin.<br/>
+            <a href="https://raw.githubusercontent.com/boysplaydraw/ciphernode/master/scripts/setup-ngrok.sh" download style="color:var(--cyan);font-size:12px;">⬇ setup-ngrok.sh</a>
+            &nbsp;·&nbsp;
+            <a href="https://raw.githubusercontent.com/boysplaydraw/ciphernode/master/scripts/setup-cloudflare.sh" download style="color:var(--cyan);font-size:12px;">⬇ setup-cloudflare.sh</a>
           </div>
-        </div>
-        <div class="selfhost-body">
-          <div class="code-block">
-            <span class="comment"># CasaOS App Store'dan</span><br/>
-            Custom App → Docker Compose:<br/><br/>
-            image: <span class="string">ciphernode/relay</span><br/>
-            ports: <span class="string">"5000:5000"</span>
-          </div>
-          <div class="selfhost-note">casaos/ ve unraid/ klasörlerinde hazır manifest dosyaları bulunur.</div>
         </div>
       </div>
 
@@ -849,11 +858,14 @@
         <div class="selfhost-body">
           <div class="code-block">
             <span class="comment"># .onion adresi oluştur</span><br/>
-            <span class="cmd">bash</span> scripts/setup-tor-hidden-service.sh<br/><br/>
+            <span class="cmd">bash</span> setup-tor-hidden-service.sh<br/><br/>
             <span class="comment"># Çıktı:</span><br/>
             .onion: <span class="string">abc123...xyz.onion</span>
           </div>
-          <div class="selfhost-note">Port forwarding gerekmez. Sunucu IP'si tamamen gizli kalır.</div>
+          <div class="selfhost-note">
+            Port forwarding gerekmez. Sunucu IP'si tamamen gizli kalır.<br/>
+            <a href="https://raw.githubusercontent.com/boysplaydraw/ciphernode/master/scripts/setup-tor-hidden-service.sh" download style="color:var(--cyan);font-size:12px;">⬇ setup-tor-hidden-service.sh indir</a>
+          </div>
         </div>
       </div>
 
@@ -880,54 +892,6 @@
   </div>
 </section>
 
-<!-- ── Windows instructions ── -->
-<section>
-  <div class="container">
-    <p class="section-label">Windows</p>
-    <h2 class="section-title">Windows'ta Sunucu Kurulumu</h2>
-    <div class="selfhost-grid">
-      <div class="selfhost-card">
-        <div class="selfhost-header">
-          <span style="font-size:24px">🪟</span>
-          <div>
-            <div class="selfhost-platform">PowerShell Script</div>
-            <div style="font-size:12px;color:var(--text2)">Otomatik kurulum</div>
-          </div>
-        </div>
-        <div class="selfhost-body">
-          <div class="code-block">
-            <span class="comment"># PowerShell'i yönetici olarak aç</span><br/>
-            <span class="cmd">Set-ExecutionPolicy</span> Bypass -Scope Process<br/><br/>
-            <span class="comment"># Sunucu başlat</span><br/>
-            <span class="cmd">.\scripts\windows-start.ps1</span><br/><br/>
-            <span class="comment"># ngrok ile dış erişim</span><br/>
-            <span class="cmd">.\scripts\windows-start.ps1</span> -Mode ngrok<br/><br/>
-            <span class="comment"># Cloudflare Tunnel</span><br/>
-            <span class="cmd">.\scripts\windows-start.ps1</span> -Mode cloudflare
-          </div>
-        </div>
-      </div>
-      <div class="selfhost-card">
-        <div class="selfhost-header">
-          <span style="font-size:24px">🐳</span>
-          <div>
-            <div class="selfhost-platform">Docker Desktop</div>
-            <div style="font-size:12px;color:var(--text2)">Docker Desktop gerekli</div>
-          </div>
-        </div>
-        <div class="selfhost-body">
-          <div class="code-block">
-            <span class="comment"># Docker Desktop kurulumu sonrası</span><br/>
-            <span class="cmd">docker compose up -d</span><br/><br/>
-            <span class="comment"># Otomatik: PowerShell ile</span><br/>
-            <span class="cmd">.\scripts\windows-start.ps1</span> -Mode docker
-          </div>
-          <div class="selfhost-note">Docker Desktop <a href="https://www.docker.com/products/docker-desktop/" target="_blank">docker.com</a>'dan indirilebilir.</div>
-        </div>
-      </div>
-    </div>
-  </div>
-</section>
 
 <!-- ── FAQ ── -->
 <section id="faq">

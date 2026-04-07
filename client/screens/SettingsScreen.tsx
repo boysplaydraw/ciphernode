@@ -30,6 +30,7 @@ import {
   getTorSettings,
   updateTorSettings,
   setLanguage as saveLanguage,
+  clearAllData,
   type PrivacySettings,
   type TorSettings,
 } from "@/lib/storage";
@@ -52,7 +53,9 @@ import {
   electronOpenExternal,
   electronBiometricIsAvailable,
   electronBiometricAuthenticate,
+  electronResetApp,
 } from "@/lib/electron-bridge";
+import * as Updates from "expo-updates";
 import { setGhostMode } from "@/lib/socket";
 import { useLowPower } from "@/constants/lowPower";
 import type { SettingsStackParamList } from "@/navigation/SettingsStackNavigator";
@@ -645,6 +648,47 @@ export default function SettingsScreen() {
               Alert.alert(
                 currentLanguage === "tr" ? "Hata" : "Error",
                 currentLanguage === "tr" ? "Sıfırlama başarısız." : "Reset failed.",
+              );
+            }
+          },
+        },
+      ],
+    );
+  };
+
+  const handleFullReset = async () => {
+    Alert.alert(
+      currentLanguage === "tr" ? "Uygulamayı Sıfırla" : "Reset App",
+      currentLanguage === "tr"
+        ? "TÜM veriler silinecek: kimlik, kişiler, sohbetler, ayarlar. Bu işlem geri alınamaz. Emin misiniz?"
+        : "ALL data will be deleted: identity, contacts, chats, settings. This cannot be undone. Are you sure?",
+      [
+        { text: currentLanguage === "tr" ? "İptal" : "Cancel", style: "cancel" },
+        {
+          text: currentLanguage === "tr" ? "Her Şeyi Sıfırla" : "Reset Everything",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              await clearAllData();
+
+              if (isElectron()) {
+                // Electron: ana süreç localStorage'ı temizler ve pencereyi yeniden yükler
+                await electronResetApp();
+              } else if (Platform.OS !== "web") {
+                // Mobil: expo-updates ile uygulamayı yeniden başlat
+                await Updates.reloadAsync();
+              } else {
+                // Web: sayfayı yeniden yükle
+                if (typeof window !== "undefined") {
+                  window.location.reload();
+                }
+              }
+            } catch (err) {
+              Alert.alert(
+                currentLanguage === "tr" ? "Hata" : "Error",
+                currentLanguage === "tr"
+                  ? "Sıfırlama başarısız. Uygulamayı manuel olarak yeniden başlatın."
+                  : "Reset failed. Please restart the app manually.",
               );
             }
           },
@@ -1447,6 +1491,29 @@ export default function SettingsScreen() {
                   : "Export or regenerate keys"
               }
               onPress={() => navigation.navigate("SecuritySettings")}
+            />
+          </View>
+        </View>
+
+        {/* ── Danger Zone ─────────────────────────────────────────────── */}
+        <View style={styles.section}>
+          <ThemedText style={[styles.sectionTitle, { color: Colors.dark.error }]}>
+            {currentLanguage === "tr" ? "Tehlikeli Alan" : "Danger Zone"}
+          </ThemedText>
+          <View style={[styles.sectionContent, { borderWidth: 1, borderColor: Colors.dark.error + "44" }]}>
+            <SettingsRow
+              icon="trash-2"
+              title={
+                currentLanguage === "tr"
+                  ? "Uygulamayı Sıfırla"
+                  : "Reset App"
+              }
+              subtitle={
+                currentLanguage === "tr"
+                  ? "Tüm veriyi sil ve başa dön (geri alınamaz)"
+                  : "Delete all data and start over (irreversible)"
+              }
+              onPress={handleFullReset}
             />
           </View>
         </View>

@@ -84,5 +84,6 @@ contextBridge.exposeInMainWorld("electronAPI", {
     maximize: () => ipcRenderer.invoke("window:maximize"),
     close: () => ipcRenderer.invoke("window:close"),
     openExternal: (url: string) => ipcRenderer.invoke("app:openExternal", url),
+    reset: () => ipcRenderer.invoke("app:reset"),
   },
 });

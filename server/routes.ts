@@ -1,5 +1,6 @@
 import type { Express } from "express";
 import { createServer, type Server } from "node:http";
+import type { Server as HttpsServer } from "node:https";
 import { Server as SocketIOServer } from "socket.io";
 
 interface PendingMessage {
@@ -168,7 +169,7 @@ function cleanupExpiredMessages() {
 
 setInterval(cleanupExpiredMessages, 60 * 60 * 1000);
 
-export async function registerRoutes(app: Express): Promise<Server> {
+export async function registerRoutes(app: Express, existingServer?: Server | HttpsServer): Promise<Server | HttpsServer> {
   app.get("/api/health", (_req, res) => {
     res.json({ status: "ok", timestamp: Date.now() });
   });
@@ -340,7 +341,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json({ contacts });
   });
 
-  const httpServer = createServer(app);
+  const httpServer = existingServer ?? createServer(app);
 
   const io = new SocketIOServer(httpServer, {
     cors: {

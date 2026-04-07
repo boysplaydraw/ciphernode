@@ -175,6 +175,7 @@ RestartSec=5
 Environment=NODE_ENV=production
 Environment=PORT=$PORT
 Environment=HOST=127.0.0.1
+Environment=SSL_DOMAIN=$DOMAIN
 
 # Güvenlik kısıtlamaları
 NoNewPrivileges=true

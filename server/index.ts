@@ -3,6 +3,8 @@ import type { Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
 import * as fs from "fs";
 import * as path from "path";
+import * as https from "https";
+import * as http from "http";
 
 const app = express();
 const log = console.log;
@@ -252,6 +254,107 @@ function setupErrorHandler(app: express.Application) {
   });
 }
 
+/**
+ * SSL sertifikası yollarını çöz.
+ *
+ * Öncelik sırası:
+ *  1. SSL_CERT + SSL_KEY env (Docker entrypoint tarafından set edilir)
+ *  2. .env dosyası (Windows setup scripti tarafından yazılır)
+ *  3. Docker volume: /app/ssl/cert.pem + /app/ssl/key.pem
+ *  4. Linux certbot: /etc/letsencrypt/live/<domain>/
+ *  5. Windows win-acme: %ProgramData%\CipherNode\ssl\
+ *
+ * HTTPS=false ise null döner → HTTP modu
+ */
+function resolveSSLPaths(): { cert: string; key: string } | null {
+  // HTTPS açıkça devre dışı bırakılmışsa HTTP modu
+  if (process.env.HTTPS === "false") {
+    log("[SSL] HTTPS=false — HTTP modunda çalışılıyor.");
+    return null;
+  }
+
+  // .env dosyasından yükle (yoksa env'den al)
+  if (fs.existsSync(path.resolve(process.cwd(), ".env"))) {
+    try {
+      const envContent = fs.readFileSync(path.resolve(process.cwd(), ".env"), "utf-8");
+      for (const line of envContent.split("\n")) {
+        const eqIdx = line.indexOf("=");
+        if (eqIdx < 0) continue;
+        const k = line.slice(0, eqIdx).trim();
+        const v = line.slice(eqIdx + 1).trim();
+        if (k === "SSL_CERT"   && !process.env.SSL_CERT)   process.env.SSL_CERT   = v;
+        if (k === "SSL_KEY"    && !process.env.SSL_KEY)    process.env.SSL_KEY    = v;
+        if (k === "SSL_DOMAIN" && !process.env.SSL_DOMAIN) process.env.SSL_DOMAIN = v;
+      }
+    } catch { /* .env okuma hatası — sessizce geç */ }
+  }
+
+  const cert = process.env.SSL_CERT;
+  const key  = process.env.SSL_KEY;
+  const dom  = process.env.SSL_DOMAIN;
+
+  // 1. Açık yollar (Docker entrypoint veya .env tarafından set edilmiş)
+  if (cert && key) {
+    if (fs.existsSync(cert) && fs.existsSync(key)) {
+      log(`[SSL] Sertifika yüklendi: ${cert}`);
+      return { cert, key };
+    }
+    log(`[SSL] UYARI: SSL_CERT/SSL_KEY bulunamadı → HTTP moduna geçiliyor.`);
+    return null;
+  }
+
+  // 2. Docker volume konumu (/app/ssl/)
+  const dockerCert = "/app/ssl/cert.pem";
+  const dockerKey  = "/app/ssl/key.pem";
+  if (fs.existsSync(dockerCert) && fs.existsSync(dockerKey)) {
+    log(`[SSL] Docker volume sertifikası kullanılıyor: ${dockerCert}`);
+    return { cert: dockerCert, key: dockerKey };
+  }
+
+  if (dom) {
+    // 3. Linux certbot
+    const leCert = `/etc/letsencrypt/live/${dom}/fullchain.pem`;
+    const leKey  = `/etc/letsencrypt/live/${dom}/privkey.pem`;
+    if (fs.existsSync(leCert) && fs.existsSync(leKey)) {
+      log(`[SSL] Let's Encrypt sertifikası kullanılıyor: ${dom}`);
+      return { cert: leCert, key: leKey };
+    }
+
+    // 4. Windows win-acme
+    const winData  = process.env.ProgramData || "C:\\ProgramData";
+    const winSslDir = path.join(winData, "CipherNode", "ssl");
+    if (fs.existsSync(winSslDir)) {
+      const files    = fs.readdirSync(winSslDir);
+      const certFile = files.find((f) =>
+        f.includes(dom) && (f.includes("chain") || f.includes("cert")) && f.endsWith(".pem")
+      ) || files.find((f) => f.endsWith(".pem") && !f.includes("key"));
+      const keyFile  = files.find((f) =>
+        f.includes(dom) && f.includes("key") && f.endsWith(".pem")
+      ) || files.find((f) => f.includes("key") && f.endsWith(".pem"));
+
+      if (certFile && keyFile) {
+        return {
+          cert: path.join(winSslDir, certFile),
+          key:  path.join(winSslDir, keyFile),
+        };
+      }
+    }
+
+    log(`[SSL] '${dom}' için sertifika bulunamadı.`);
+    log(`[SSL]   Linux  : sudo bash scripts/setup-ssl.sh ${dom}`);
+    log(`[SSL]   Windows: powershell -File scripts\\setup-ssl-windows.ps1 -Domain ${dom}`);
+    log(`[SSL]   Docker : SSL_DOMAIN=${dom} docker compose up`);
+  }
+
+  // HTTPS=true ama sertifika yok → HTTP moduna düş (Docker dışında)
+  if (process.env.HTTPS === "true") {
+    log("[SSL] HTTPS=true ama sertifika bulunamadı — HTTP moduna geçiliyor.");
+    log("[SSL] Docker'da bu normal değil; entrypoint script çalıştı mı?");
+  }
+
+  return null;
+}
+
 (async () => {
   setupCors(app);
   setupBodyParsing(app);
@@ -259,14 +362,64 @@ function setupErrorHandler(app: express.Application) {
 
   configureExpoAndLanding(app);
 
-  const server = await registerRoutes(app);
-
-  setupErrorHandler(app);
-
   const port = parseInt(process.env.PORT || "5000", 10);
   // 0.0.0.0: Docker container, Termux, LAN ve Tor hidden service erişimi için
   const host = process.env.HOST || "0.0.0.0";
-  server.listen(port, host, () => {
-    log(`express server serving on ${host}:${port}`);
-  });
+
+  const sslPaths = resolveSSLPaths();
+
+  if (sslPaths) {
+    // ── HTTPS modu: Let's Encrypt / özel sertifika ──────────────────────
+    const tlsOptions = {
+      cert: fs.readFileSync(sslPaths.cert),
+      key: fs.readFileSync(sslPaths.key),
+    };
+
+    // HTTPS sunucusunu önce oluştur; socket.io bu sunucuya bağlanır
+    const httpsPort = parseInt(process.env.SSL_PORT || "443", 10);
+    const httpsServer = https.createServer(tlsOptions, app);
+
+    // registerRoutes'a HTTPS sunucusunu ver (socket.io üzerine eklenir)
+    await registerRoutes(app, httpsServer as any);
+
+    setupErrorHandler(app);
+
+    httpsServer.listen(httpsPort, host, () => {
+      log(`[SSL] HTTPS sunucusu ${host}:${httpsPort} üzerinde çalışıyor`);
+    });
+
+    // HTTP → HTTPS yönlendirme sunucusu (port 80)
+    const redirectApp = express();
+    redirectApp.use((req: Request, res: Response) => {
+      const sslDomain = process.env.SSL_DOMAIN || req.headers.host?.replace(/:\d+$/, "") || "";
+      // Let's Encrypt ACME doğrulaması için bypass
+      if (req.path.startsWith("/.well-known/acme-challenge/")) {
+        const challengePath = path.resolve(process.cwd(), "var", "www", "certbot", req.path);
+        if (fs.existsSync(challengePath)) {
+          return res.sendFile(challengePath);
+        }
+      }
+      res.redirect(301, `https://${sslDomain}${req.url}`);
+    });
+
+    const httpRedirectPort = parseInt(process.env.HTTP_REDIRECT_PORT || "80", 10);
+    http.createServer(redirectApp).listen(httpRedirectPort, host, () => {
+      log(`[SSL] HTTP→HTTPS yönlendirme sunucusu port ${httpRedirectPort} üzerinde çalışıyor`);
+    });
+
+    log(`[SSL] Sertifika: ${sslPaths.cert}`);
+    log(`[SSL] İpucu: Certbot otomatik yenileme için 'sudo certbot renew --quiet' cron'a ekleyin.`);
+  } else {
+    // ── HTTP modu (varsayılan) ────────────────────────────────────────────
+    const server = await registerRoutes(app);
+
+    setupErrorHandler(app);
+
+    server.listen(port, host, () => {
+      log(`express server serving on ${host}:${port}`);
+      if (process.env.SSL_DOMAIN) {
+        log(`[SSL] SSL etkinleştirmek için: sudo bash scripts/setup-ssl.sh ${process.env.SSL_DOMAIN}`);
+      }
+    });
+  }
 })();

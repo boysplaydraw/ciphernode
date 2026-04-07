@@ -239,27 +239,32 @@ export default function AddContactScreen() {
         },
       ]}
     >
-      <Pressable
-        onPress={handleScanQR}
-        style={({ pressed }) => [
-          styles.scanButton,
-          pressed && styles.scanButtonPressed,
-        ]}
-      >
-        <View style={styles.scanIconContainer}>
-          <Feather name="camera" size={32} color={Colors.dark.primary} />
-        </View>
-        <ThemedText style={styles.scanButtonText}>{t.scanQR}</ThemedText>
-        <ThemedText style={styles.scanButtonSubtext}>
-          {t.scanQRSubtext}
-        </ThemedText>
-      </Pressable>
+      {/* QR kod tarama — yalnızca Android'de göster */}
+      {Platform.OS === "android" && (
+        <>
+          <Pressable
+            onPress={handleScanQR}
+            style={({ pressed }) => [
+              styles.scanButton,
+              pressed && styles.scanButtonPressed,
+            ]}
+          >
+            <View style={styles.scanIconContainer}>
+              <Feather name="camera" size={32} color={Colors.dark.primary} />
+            </View>
+            <ThemedText style={styles.scanButtonText}>{t.scanQR}</ThemedText>
+            <ThemedText style={styles.scanButtonSubtext}>
+              {t.scanQRSubtext}
+            </ThemedText>
+          </Pressable>
 
-      <View style={styles.divider}>
-        <View style={styles.dividerLine} />
-        <ThemedText style={styles.dividerText}>{t.or}</ThemedText>
-        <View style={styles.dividerLine} />
-      </View>
+          <View style={styles.divider}>
+            <View style={styles.dividerLine} />
+            <ThemedText style={styles.dividerText}>{t.or}</ThemedText>
+            <View style={styles.dividerLine} />
+          </View>
+        </>
+      )}
 
       <View style={styles.section}>
         <ThemedText style={styles.sectionTitle}>{t.enterContactId}</ThemedText>

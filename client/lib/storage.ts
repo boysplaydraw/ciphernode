@@ -494,6 +494,8 @@ export async function clearAllData(): Promise<void> {
     SETTINGS_KEY,
     ONBOARDING_KEY,
     LANGUAGE_KEY,
+    PRIVACY_SETTINGS_KEY,
+    TOR_SETTINGS_KEY,
     "@ciphernode/identity",
   ]);
 }

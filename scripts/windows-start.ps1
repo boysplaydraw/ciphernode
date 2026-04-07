@@ -11,7 +11,8 @@ param(
     [string]$NgrokToken = "",
     [string]$DuckDomain = "",
     [string]$DuckToken = "",
-    [int]$Port = 5000
+    [int]$Port = 5000,
+    [string]$SslDomain = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -233,9 +234,49 @@ switch ($Mode.ToLower()) {
         Write-Host ""
     }
 
+    # ── SSL modu ──────────────────────────────────────────
+    "ssl" {
+        if (-not $SslDomain) {
+            Write-Host "[Hata] -SslDomain parametresi gerekli!" -ForegroundColor Red
+            Write-Host ""
+            Write-Host "  Ornek:"
+            Write-Host "    powershell -File scripts\windows-start.ps1 -Mode ssl -SslDomain relay.example.com"
+            exit 1
+        }
+
+        # SSL kurulumunu calistir (yonetici yetkisi gerektirir)
+        $isAdmin = ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole(
+            [Security.Principal.WindowsBuiltInRole]::Administrator)
+
+        if (-not $isAdmin) {
+            Write-Host "[SSL] Yonetici yetkisi gerekiyor. Yukseltiliyor..." -ForegroundColor Yellow
+            Start-Process powershell -ArgumentList `
+                "-ExecutionPolicy Bypass -File `"$PSScriptRoot\setup-ssl-windows.ps1`" -Domain $SslDomain" `
+                -Verb RunAs -Wait
+        } else {
+            & "$PSScriptRoot\setup-ssl-windows.ps1" -Domain $SslDomain -Port $Port
+        }
+
+        # Kurulumdan sonra SSL ile sunucuyu baslat
+        Write-Header "CipherNode — SSL ile Baslatiliyor"
+        $env:NODE_ENV  = "production"
+        $env:PORT      = $Port
+        $env:HOST      = "0.0.0.0"
+        $env:SSL_DOMAIN = $SslDomain
+
+        Set-Location $AppDir
+        $serverFile = if (Test-Path "server_dist\index.mjs") { "server_dist\index.mjs" } else { "server_dist\index.js" }
+        Write-Host ""
+        Write-Host " HTTPS : https://$SslDomain" -ForegroundColor Green
+        Write-Host " HTTP  : port 80 → HTTPS yonlendirme" -ForegroundColor Gray
+        Write-Host " Durdurmak icin Ctrl+C"
+        Write-Host ""
+        node $serverFile
+    }
+
     default {
         Write-Host "Bilinmeyen mod: $Mode" -ForegroundColor Red
-        Write-Host "Gecerli modlar: server, ngrok, cloudflare, docker"
+        Write-Host "Gecerli modlar: server, ngrok, cloudflare, docker, ssl"
         exit 1
     }
 }

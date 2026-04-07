@@ -572,6 +572,35 @@ function setupAppIPC() {
     }
   });
   ipcMain.handle("window:close", () => mainWindow?.close());
+
+  // Uygulamayı tamamen sıfırla — tüm localStorage/session temizle ve yeniden yükle
+  ipcMain.handle("app:reset", async () => {
+    try {
+      // Tor aktifse durdur
+      if (torEnabled) {
+        await session.defaultSession.setProxy({ proxyRules: "" });
+        stopTor();
+        torEnabled = false;
+      }
+
+      // localStorage ve sessionStorage'ı temizle (AsyncStorage React Native Web için localStorage kullanır)
+      await mainWindow?.webContents.executeJavaScript(`
+        try { localStorage.clear(); } catch(e) {}
+        try { sessionStorage.clear(); } catch(e) {}
+      `);
+
+      // Pencereyi yeniden yükle
+      if (IS_DEV) {
+        mainWindow?.loadURL(EXPO_DEV_URL);
+      } else {
+        mainWindow?.loadURL("http://127.0.0.1:" + CLIENT_PORT);
+      }
+
+      return { success: true };
+    } catch (err: any) {
+      return { success: false, error: err.message };
+    }
+  });
 }
 
 // ── Uygulama başlatma ─────────────────────────────────────────────────

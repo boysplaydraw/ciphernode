@@ -73,6 +73,7 @@ declare global {
         minimize: () => Promise<void>;
         maximize: () => Promise<void>;
         close: () => Promise<void>;
+        reset: () => Promise<{ success: boolean; error?: string }>;
       };
     };
   }
@@ -149,6 +150,15 @@ export async function electronBiometricAuthenticate(
 ): Promise<{ success: boolean; error?: string }> {
   if (!isElectron()) return { success: false, error: "Not in Electron" };
   return window.electronAPI!.biometric.authenticate(reason);
+}
+
+/** Uygulamayı tamamen sıfırla — tüm veriyi sil ve yeniden başlat */
+export async function electronResetApp(): Promise<{
+  success: boolean;
+  error?: string;
+}> {
+  if (!isElectron()) return { success: false, error: "Not in Electron" };
+  return window.electronAPI!.app.reset();
 }
 
 /** Harici URL'yi sistem tarayıcısında aç */

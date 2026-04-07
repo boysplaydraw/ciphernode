@@ -30,6 +30,12 @@ import { Colors, Spacing, BorderRadius, Fonts } from "@/constants/theme";
 import { setOnboardingComplete, updateTorSettings } from "@/lib/storage";
 import { getOrCreateIdentity, updateDisplayName } from "@/lib/crypto";
 import { useLanguage } from "@/constants/language";
+import {
+  isElectron,
+  electronEnableTor,
+  electronVerifyTor,
+  electronOnTorStatus,
+} from "@/lib/electron-bridge";
 
 type ConnectionMode = "clearnet" | "tor";
 
@@ -211,6 +217,86 @@ export default function OnboardingScreen({
     haptic();
     if (displayNameInput.trim()) {
       await updateDisplayName(displayNameInput.trim());
+    }
+
+    // Electron'da Tor seçildiyse → Electron Tor yöneticisini kullan
+    if (connectionMode === "tor" && isElectron()) {
+      setCheckingTor(true);
+      setTorCheckResult("checking");
+      try {
+        await updateTorSettings({ enabled: true, connectionStatus: "connecting" });
+
+        // Tor durumunu dinle
+        const unsub = electronOnTorStatus?.((status) => {
+          if (status.progress !== undefined) {
+            // progress bilgisi için ek state kullanılabilir ama şimdilik sadece log
+          }
+        });
+
+        const result = await electronEnableTor();
+        unsub?.();
+
+        if (!result.success) {
+          setTorCheckResult("fail");
+          setCheckingTor(false);
+          Alert.alert(
+            isTr ? "Tor Başlatılamadı" : "Tor Failed to Start",
+            result.error || (isTr ? "Tor başlatılırken hata oluştu." : "An error occurred while starting Tor."),
+            [
+              {
+                text: isTr ? "Clearnet ile Devam" : "Continue with Clearnet",
+                onPress: () => doFinish(false),
+              },
+              { text: isTr ? "Tekrar Dene" : "Retry", onPress: handleFinish },
+            ],
+          );
+          return;
+        }
+
+        // Tor doğrulama
+        const verify = await electronVerifyTor();
+        if (verify?.isTor) {
+          setTorCheckResult("ok");
+          await updateTorSettings({ connectionStatus: "connected" });
+          await setOnboardingComplete();
+          onComplete();
+        } else {
+          setTorCheckResult("fail");
+          setCheckingTor(false);
+          Alert.alert(
+            isTr ? "Tor Tespit Edilmedi" : "Tor Not Detected",
+            isTr
+              ? `Trafik Tor üzerinden geçmiyor.\nMevcut IP: ${verify?.ip || "?"}`
+              : `Traffic is not going through Tor.\nCurrent IP: ${verify?.ip || "?"}`,
+            [
+              { text: isTr ? "Tekrar Dene" : "Retry", onPress: handleFinish },
+              {
+                text: isTr ? "Clearnet ile Devam" : "Continue with Clearnet",
+                style: "cancel",
+                onPress: () => doFinish(false),
+              },
+            ],
+          );
+        }
+      } catch {
+        setTorCheckResult("fail");
+        setCheckingTor(false);
+        Alert.alert(
+          isTr ? "Bağlantı Hatası" : "Connection Error",
+          isTr
+            ? "Tor başlatılamadı veya doğrulanamadı."
+            : "Could not start or verify Tor.",
+          [
+            { text: isTr ? "Tekrar Dene" : "Retry", onPress: handleFinish },
+            {
+              text: isTr ? "Clearnet ile Devam" : "Continue with Clearnet",
+              style: "cancel",
+              onPress: () => doFinish(false),
+            },
+          ],
+        );
+      }
+      return;
     }
 
     // Android/iOS'ta Tor seçildiyse → Orbot kılavuzu göster

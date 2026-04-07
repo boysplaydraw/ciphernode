@@ -1,8 +1,6 @@
 services:
   ciphernode-relay:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    image: mero003/ciphernode:latest
     container_name: ciphernode-relay
     restart: unless-stopped
 

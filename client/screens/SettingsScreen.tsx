@@ -1537,28 +1537,26 @@ export default function SettingsScreen() {
               }
               onPress={() => navigation.navigate("About")}
             />
-            {/* Web uygulaması — sadece mobil/desktop'ta göster */}
+            {/* Web sitesi — sadece mobil/desktop'ta göster */}
             {Platform.OS !== "web" ? (
               <SettingsRow
                 icon="monitor"
                 title={
                   currentLanguage === "tr"
-                    ? "Web Uygulamasına Git"
-                    : "Open Web App"
+                    ? "Web Sitesine Git"
+                    : "Visit Website"
                 }
                 subtitle={
                   currentLanguage === "tr"
-                    ? "Tarayıcıda CipherNode'u aç"
-                    : "Use CipherNode in your browser"
+                    ? "cipher-node.site"
+                    : "cipher-node.site"
                 }
                 onPress={() => {
-                  const webUrl = process.env.EXPO_PUBLIC_SERVER_URL
-                    ? process.env.EXPO_PUBLIC_SERVER_URL
-                    : "http://localhost:5000";
+                  const siteUrl = "https://cipher-node.site";
                   if (isElectron()) {
-                    electronOpenExternal(webUrl);
+                    electronOpenExternal(siteUrl);
                   } else {
-                    Linking.openURL(webUrl);
+                    Linking.openURL(siteUrl);
                   }
                 }}
               />

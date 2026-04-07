@@ -523,6 +523,10 @@
         <div class="stat-value">4 platform</div>
         <div class="stat-label">Android · iOS · Desktop · Web</div>
       </div>
+      <div>
+        <div class="stat-value">Docker</div>
+        <div class="stat-label"><a href="https://hub.docker.com/r/mero003/ciphernode" target="_blank" rel="noopener" style="color:var(--cyan)">mero003/ciphernode</a></div>
+      </div>
     </div>
   </div>
 </div>
@@ -743,14 +747,19 @@
         </div>
         <div class="selfhost-body">
           <div class="code-block">
-            <span class="comment"># Tek komutla başlat</span><br/>
-            <span class="cmd">docker run -d</span> -p 443:443 -p 80:80 -p 5000:5000 \<br/>
+            <span class="comment"># Tek komutla çalıştır</span><br/>
+            <span class="cmd">docker run -d</span> \<br/>
+            &nbsp;&nbsp;-p 443:443 -p 80:80 -p 5000:5000 \<br/>
+            &nbsp;&nbsp;--restart unless-stopped \<br/>
             &nbsp;&nbsp;mero003/ciphernode:latest<br/><br/>
             <span class="comment"># Ya da docker-compose ile</span><br/>
             <span class="cmd">curl -O</span> https://raw.githubusercontent.com/boysplaydraw/ciphernode/master/docker-compose.yml<br/>
             <span class="cmd">docker compose up -d</span>
           </div>
-          <div class="selfhost-note">Otomatik self-signed SSL üretilir. Domain varsa <code>SSL_DOMAIN=relay.example.com</code> .env'e ekleyin → Let's Encrypt otomatik kurulur.</div>
+          <div class="selfhost-note">
+            Otomatik self-signed SSL üretilir. Domain varsa <code>SSL_DOMAIN=relay.example.com</code> .env'e ekleyin → Let's Encrypt otomatik kurulur.<br/><br/>
+            <a href="https://hub.docker.com/r/mero003/ciphernode" target="_blank" rel="noopener" style="color:var(--cyan);font-size:12px;">🐳 Docker Hub → mero003/ciphernode</a>
+          </div>
         </div>
       </div>
 

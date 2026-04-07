@@ -472,7 +472,7 @@
       <li><a href="#downloads">İndir</a></li>
       <li><a href="#selfhost">Kendi Sunucu</a></li>
       <li><a href="#faq">SSS</a></li>
-      <li><a href="#webapp" class="nav-cta">Web Uygulaması →</a></li>
+      <li><a href="https://github.com/boysplaydraw/ciphernode/releases/latest" target="_blank" rel="noopener" class="nav-cta">İndir →</a></li>
     </ul>
   </div>
 </nav>
@@ -490,7 +490,7 @@
         ⬇ Uygulamayı İndir
       </a>
       <a id="webapp-btn" href="#webapp" class="btn btn-web">
-        🌐 Web Uygulamasını Aç
+        🌐 Web Uygulaması Hakkında
       </a>
       <a href="#selfhost" class="btn btn-secondary">
         🖥 Kendi Sunucunu Kur
@@ -620,37 +620,37 @@
     <p class="section-desc">Tercih ettiğiniz platformda indirin ve kurulum gerekmeden kullanmaya başlayın.</p>
 
     <div class="downloads-grid">
-      <a href="#" class="download-card" id="dl-android">
+      <a href="https://github.com/boysplaydraw/ciphernode/releases/latest" target="_blank" rel="noopener" class="download-card">
         <div class="download-icon">🤖</div>
         <div class="download-name">Android</div>
         <div class="download-desc">Android 10+</div>
-        <div class="download-badge" id="dl-android-badge">APK · Hazırlanıyor...</div>
+        <div class="download-badge">APK · GitHub Releases</div>
       </a>
-      <a href="#" class="download-card" id="dl-ios">
+      <a href="#" class="download-card" style="opacity:.6; cursor:not-allowed;">
         <div class="download-icon">🍎</div>
         <div class="download-name">iOS / iPadOS</div>
         <div class="download-desc">iOS 16+</div>
         <div class="download-badge soon">Yakında</div>
       </a>
-      <a href="#" class="download-card" id="dl-win">
+      <a href="https://github.com/boysplaydraw/ciphernode/releases/latest/download/CipherNode.Setup.1.0.0.exe" class="download-card">
         <div class="download-icon">🪟</div>
         <div class="download-name">Windows</div>
         <div class="download-desc">Windows 10/11 · Kurulum</div>
         <div class="download-badge">Electron · Setup .exe</div>
       </a>
-      <a href="#" class="download-card" id="dl-win-portable">
+      <a href="https://github.com/boysplaydraw/ciphernode/releases/latest/download/CipherNode.1.0.0.exe" class="download-card">
         <div class="download-icon">💼</div>
         <div class="download-name">Windows Portable</div>
         <div class="download-desc">Windows 10/11 · Kurulum gerektirmez</div>
         <div class="download-badge">Electron · Portable .exe</div>
       </a>
-      <a href="#" class="download-card" id="dl-mac">
+      <a href="#" class="download-card" style="opacity:.6; cursor:not-allowed;">
         <div class="download-icon">🍏</div>
         <div class="download-name">macOS</div>
         <div class="download-desc">macOS 12+</div>
         <div class="download-badge soon">Yakında</div>
       </a>
-      <a href="#" class="download-card" id="dl-linux">
+      <a href="#" class="download-card" style="opacity:.6; cursor:not-allowed;">
         <div class="download-icon">🐧</div>
         <div class="download-name">Linux</div>
         <div class="download-desc">Ubuntu / Arch / Fedora</div>
@@ -669,22 +669,22 @@
       <div>
         <h3>🌐 Web Uygulamasını Kullan</h3>
         <p>
-          Herhangi bir tarayıcıda kurulum gerektirmeden CipherNode'u kullanın.
+          Kendi relay sunucunuzu kurduktan sonra web uygulamasına tarayıcıdan erişebilirsiniz.
           Gizlilik için <strong>Tor Browser</strong>'da açmanızı öneririz — tüm trafik otomatik olarak Tor'a yönlenir.
         </p>
         <br/>
         <p style="font-size:13px; color:var(--text3)">
-          Not: Web sürümü bazı özellikler için sisteme bağımlıdır (Tor, biyometrik kilit).
-          Maksimum gizlilik için masaüstü veya mobil uygulamayı tercih edin.
+          Not: Web uygulaması relay sunucunuzun üzerinde çalışır (<code>https://sunucu-ip/app</code>).
+          Kendi sunucunuzu kurmak için aşağıdaki "Kendi Sunucu" bölümüne bakın.
         </p>
       </div>
       <div style="display:flex; flex-direction:column; gap:12px; align-items:center;">
-        <a href="/app" id="open-webapp-btn" class="btn btn-web" style="white-space:nowrap">
-          → Web Uygulamasını Aç
+        <a href="#selfhost" class="btn btn-web" style="white-space:nowrap">
+          🖥 Sunucu Kur →
         </a>
         <a href="https://www.torproject.org/download/" target="_blank" rel="noopener"
            class="btn btn-secondary" style="white-space:nowrap; font-size:13px;">
-          🧅 Tor Browser ile Aç
+          🧅 Tor Browser İndir
         </a>
       </div>
     </div>
@@ -749,7 +749,7 @@
         <div class="selfhost-body">
           <div class="code-block">
             <span class="comment"># Repo'yu klonla</span><br/>
-            <span class="cmd">git clone</span> https://github.com/.../ciphernode<br/>
+            <span class="cmd">git clone</span> https://github.com/boysplaydraw/ciphernode<br/>
             <span class="cmd">cd</span> ciphernode<br/><br/>
             <span class="comment"># Başlat</span><br/>
             <span class="cmd">docker compose up -d</span>
@@ -1027,7 +1027,7 @@
       <div class="footer-col">
         <h4>Bağlantı</h4>
         <ul>
-          <li><a href="https://github.com" target="_blank">GitHub</a></li>
+          <li><a href="https://github.com/boysplaydraw/ciphernode" target="_blank">GitHub</a></li>
           <li><a href="https://check.torproject.org" target="_blank">Tor Kontrol</a></li>
           <li><a href="https://www.torproject.org/download/" target="_blank">Tor Browser</a></li>
           <li><a href="https://orbot.app" target="_blank">Orbot (Android)</a></li>
@@ -1049,33 +1049,6 @@
     item.classList.toggle('open');
   }
 
-  /* Web app button — sunucu URL'ini dinamik ayarla */
-  (function() {
-    const serverUrl = window.location.origin;
-    const webAppBtn = document.getElementById('open-webapp-btn');
-    const heroWebBtn = document.getElementById('webapp-btn');
-    if (webAppBtn) webAppBtn.href = serverUrl + '/app';
-    if (heroWebBtn) heroWebBtn.href = serverUrl + '/app';
-
-    // Windows indirme linkleri — sunucudan serve ediliyor
-    const winSetup = document.getElementById('dl-win');
-    const winPortable = document.getElementById('dl-win-portable');
-    if (winSetup) winSetup.href = serverUrl + '/downloads/CipherNode%20Setup%201.0.0.exe';
-    if (winPortable) winPortable.href = serverUrl + '/downloads/CipherNode%201.0.0.exe';
-
-    // Android APK — EAS Build API'sinden otomatik çek
-    fetch('/api/latest-apk')
-      .then(r => r.ok ? r.json() : null)
-      .then(data => {
-        if (data && data.url) {
-          const el = document.getElementById('dl-android');
-          const badge = document.getElementById('dl-android-badge');
-          if (el) el.href = data.url;
-          if (badge) badge.textContent = 'APK · İndir';
-        }
-      })
-      .catch(() => {});
-  })();
 
   /* Smooth scroll için offset (fixed nav) */
   document.querySelectorAll('a[href^="#"]').forEach(a => {

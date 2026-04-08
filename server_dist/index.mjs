@@ -4,6 +4,160 @@ import express from "express";
 // server/routes.ts
 import { createServer } from "node:http";
 import { Server as SocketIOServer } from "socket.io";
+
+// server/tor-hidden-service.ts
+import { spawn } from "node:child_process";
+import * as path from "node:path";
+import * as fs from "node:fs";
+import * as net from "node:net";
+import * as os from "node:os";
+var log = (msg) => console.log(`[Tor] ${msg}`);
+var torProcess = null;
+var onionAddress = process.env.ONION_ADDRESS || null;
+function getOnionAddress() {
+  return onionAddress;
+}
+function getTorBinaryPath() {
+  const exeName = process.platform === "win32" ? "tor.exe" : "tor";
+  const arch = process.arch;
+  function subdir() {
+    if (process.platform === "darwin") {
+      return arch === "arm64" ? "macos-arm64" : "macos-x64";
+    }
+    if (process.platform === "win32") return "windows";
+    if (process.platform === "linux") {
+      return arch === "arm64" ? "linux-arm64" : "linux-x64";
+    }
+    return "linux-x64";
+  }
+  const candidates = [
+    path.resolve(process.cwd(), "tor-bin", subdir(), exeName),
+    path.resolve(process.cwd(), "..", "tor-bin", subdir(), exeName)
+  ];
+  for (const p of candidates) {
+    if (fs.existsSync(p)) return p;
+  }
+  return "tor";
+}
+function isTorPortOpen() {
+  return new Promise((resolve3) => {
+    const socket = new net.Socket();
+    socket.setTimeout(2e3);
+    socket.connect(9050, "127.0.0.1", () => {
+      socket.destroy();
+      resolve3(true);
+    });
+    socket.on("error", () => resolve3(false));
+    socket.on("timeout", () => {
+      socket.destroy();
+      resolve3(false);
+    });
+  });
+}
+function prepareTorConfig(hiddenServicePort) {
+  const dataDir = path.join(os.tmpdir(), "ciphernode-tor");
+  const hsDir = path.join(dataDir, "hidden_service");
+  fs.mkdirSync(hsDir, { recursive: true });
+  const torrcPath = path.join(dataDir, "torrc");
+  const torrc = [
+    `DataDirectory ${dataDir}`,
+    `SocksPort 9050`,
+    `ControlPort 9051`,
+    `HiddenServiceDir ${hsDir}`,
+    `HiddenServicePort 80 127.0.0.1:${hiddenServicePort}`,
+    `Log notice stdout`
+  ].join("\n");
+  fs.writeFileSync(torrcPath, torrc, "utf-8");
+  return { torrcPath, dataDir };
+}
+function readOnionAddress(dataDir) {
+  const hostnameFile = path.join(dataDir, "hidden_service", "hostname");
+  if (fs.existsSync(hostnameFile)) {
+    return fs.readFileSync(hostnameFile, "utf-8").trim();
+  }
+  return null;
+}
+function waitForBootstrap(proc, timeoutMs = 9e4) {
+  return new Promise((resolve3, reject) => {
+    const timer = setTimeout(() => reject(new Error("Tor bootstrap timeout")), timeoutMs);
+    const check = (data) => {
+      const line = data.toString();
+      if (line.includes("Bootstrapped 100%") || line.includes("Done")) {
+        clearTimeout(timer);
+        resolve3();
+      }
+      if (line.includes("Problem bootstrapping")) {
+        clearTimeout(timer);
+        reject(new Error(`Bootstrap failed: ${line.trim()}`));
+      }
+    };
+    proc.stdout?.on("data", check);
+    proc.stderr?.on("data", check);
+    proc.on("exit", (code) => {
+      clearTimeout(timer);
+      if (code !== 0) reject(new Error(`Tor exited with code ${code}`));
+    });
+  });
+}
+async function startTorHiddenService(serverPort) {
+  if (process.env.ONION_ADDRESS) {
+    log(`ONION_ADDRESS env var mevcut: ${process.env.ONION_ADDRESS}`);
+    onionAddress = process.env.ONION_ADDRESS;
+    return onionAddress;
+  }
+  if (process.env.TOR_ENABLED !== "true") {
+    return null;
+  }
+  log("Tor Hidden Service ba\u015Flat\u0131l\u0131yor...");
+  const systemTorRunning = await isTorPortOpen();
+  if (systemTorRunning) {
+    log("Sistem Tor zaten \xE7al\u0131\u015F\u0131yor (port 9050 a\xE7\u0131k).");
+  }
+  const { torrcPath, dataDir } = prepareTorConfig(serverPort);
+  const torBin = getTorBinaryPath();
+  log(`Tor binary: ${torBin}`);
+  log(`Data dir: ${dataDir}`);
+  try {
+    torProcess = spawn(torBin, ["-f", torrcPath], {
+      stdio: ["ignore", "pipe", "pipe"]
+    });
+    torProcess.on("error", (err) => {
+      log(`Tor ba\u015Flat\u0131lamad\u0131: ${err.message}`);
+      torProcess = null;
+    });
+    torProcess.on("exit", (code) => {
+      log(`Tor kapand\u0131 (kod: ${code})`);
+      torProcess = null;
+    });
+    log("Bootstrap bekleniyor (maks 90 saniye)...");
+    await waitForBootstrap(torProcess);
+    log("Bootstrap tamamland\u0131!");
+    onionAddress = readOnionAddress(dataDir);
+    if (onionAddress) {
+      log(`Onion adresi: ${onionAddress}`);
+    } else {
+      log("UYARI: .onion adresi okunamad\u0131, birka\xE7 saniye sonra tekrar denenecek.");
+      await new Promise((r) => setTimeout(r, 3e3));
+      onionAddress = readOnionAddress(dataDir);
+      if (onionAddress) log(`Onion adresi (gecikme sonras\u0131): ${onionAddress}`);
+    }
+    return onionAddress;
+  } catch (err) {
+    log(`Tor ba\u015Flatma hatas\u0131: ${err.message}`);
+    torProcess?.kill();
+    torProcess = null;
+    return null;
+  }
+}
+function stopTor() {
+  if (torProcess) {
+    torProcess.kill();
+    torProcess = null;
+    log("Tor durduruldu.");
+  }
+}
+
+// server/routes.ts
 var matchingQueue = /* @__PURE__ */ new Map();
 var matchSessions = /* @__PURE__ */ new Map();
 var userToSession = /* @__PURE__ */ new Map();
@@ -213,8 +367,7 @@ async function registerRoutes(app2, existingServer) {
     });
   });
   app2.get("/api/onion-address", (_req, res) => {
-    const onionAddress = process.env.ONION_ADDRESS || null;
-    res.json({ onionAddress });
+    res.json({ onionAddress: getOnionAddress() });
   });
   app2.get("/api/users/:userId/publickey", (req, res) => {
     const { userId } = req.params;
@@ -709,12 +862,12 @@ async function registerRoutes(app2, existingServer) {
 }
 
 // server/index.ts
-import * as fs from "fs";
-import * as path from "path";
+import * as fs2 from "fs";
+import * as path2 from "path";
 import * as https from "https";
 import * as http from "http";
 var app = express();
-var log = console.log;
+var log2 = console.log;
 app.set("trust proxy", 1);
 function setupCors(app2) {
   app2.use((req, res, next) => {
@@ -754,7 +907,7 @@ function setupBodyParsing(app2) {
 function setupRequestLogging(app2) {
   app2.use((req, res, next) => {
     const start = Date.now();
-    const path2 = req.path;
+    const path3 = req.path;
     let capturedJsonResponse = void 0;
     const originalResJson = res.json;
     res.json = function(bodyJson, ...args) {
@@ -762,24 +915,24 @@ function setupRequestLogging(app2) {
       return originalResJson.apply(res, [bodyJson, ...args]);
     };
     res.on("finish", () => {
-      if (!path2.startsWith("/api")) return;
+      if (!path3.startsWith("/api")) return;
       const duration = Date.now() - start;
-      let logLine = `${req.method} ${path2} ${res.statusCode} in ${duration}ms`;
+      let logLine = `${req.method} ${path3} ${res.statusCode} in ${duration}ms`;
       if (capturedJsonResponse) {
         logLine += ` :: ${JSON.stringify(capturedJsonResponse)}`;
       }
       if (logLine.length > 80) {
         logLine = logLine.slice(0, 79) + "\u2026";
       }
-      log(logLine);
+      log2(logLine);
     });
     next();
   });
 }
 function getAppName() {
   try {
-    const appJsonPath = path.resolve(process.cwd(), "app.json");
-    const appJsonContent = fs.readFileSync(appJsonPath, "utf-8");
+    const appJsonPath = path2.resolve(process.cwd(), "app.json");
+    const appJsonContent = fs2.readFileSync(appJsonPath, "utf-8");
     const appJson = JSON.parse(appJsonContent);
     return appJson.expo?.name || "App Landing Page";
   } catch {
@@ -787,19 +940,19 @@ function getAppName() {
   }
 }
 function serveExpoManifest(platform, res) {
-  const manifestPath = path.resolve(
+  const manifestPath = path2.resolve(
     process.cwd(),
     "static-build",
     platform,
     "manifest.json"
   );
-  if (!fs.existsSync(manifestPath)) {
+  if (!fs2.existsSync(manifestPath)) {
     return res.status(404).json({ error: `Manifest not found for platform: ${platform}` });
   }
   res.setHeader("expo-protocol-version", "1");
   res.setHeader("expo-sfv-version", "0");
   res.setHeader("content-type", "application/json");
-  const manifest = fs.readFileSync(manifestPath, "utf-8");
+  const manifest = fs2.readFileSync(manifestPath, "utf-8");
   res.send(manifest);
 }
 function serveLandingPage({
@@ -814,22 +967,22 @@ function serveLandingPage({
   const host = forwardedHost || req.get("host");
   const baseUrl = `${protocol}://${host}`;
   const expsUrl = `${host}`;
-  log(`baseUrl`, baseUrl);
-  log(`expsUrl`, expsUrl);
+  log2(`baseUrl`, baseUrl);
+  log2(`expsUrl`, expsUrl);
   const html = landingPageTemplate.replace(/BASE_URL_PLACEHOLDER/g, baseUrl).replace(/EXPS_URL_PLACEHOLDER/g, expsUrl).replace(/APP_NAME_PLACEHOLDER/g, appName);
   res.setHeader("Content-Type", "text/html; charset=utf-8");
   res.status(200).send(html);
 }
 function configureExpoAndLanding(app2) {
-  const templatePath = path.resolve(
+  const templatePath = path2.resolve(
     process.cwd(),
     "server",
     "templates",
     "landing-page.html"
   );
-  const landingPageTemplate = fs.readFileSync(templatePath, "utf-8");
+  const landingPageTemplate = fs2.readFileSync(templatePath, "utf-8");
   const appName = getAppName();
-  log("Serving static Expo files with dynamic manifest routing");
+  log2("Serving static Expo files with dynamic manifest routing");
   app2.use((req, res, next) => {
     if (req.path.startsWith("/api")) {
       return next();
@@ -842,9 +995,9 @@ function configureExpoAndLanding(app2) {
       return serveExpoManifest(platform, res);
     }
     if (req.path === "/") {
-      const websitePath = path.resolve(process.cwd(), "website", "index.html");
+      const websitePath = path2.resolve(process.cwd(), "website", "index.html");
       const accept = req.header("accept") || "";
-      if (accept.includes("text/html") && fs.existsSync(websitePath)) {
+      if (accept.includes("text/html") && fs2.existsSync(websitePath)) {
         return res.sendFile(websitePath);
       }
       return serveLandingPage({
@@ -856,34 +1009,34 @@ function configureExpoAndLanding(app2) {
     }
     next();
   });
-  app2.use("/assets", express.static(path.resolve(process.cwd(), "assets")));
-  app2.use(express.static(path.resolve(process.cwd(), "static-build")));
-  const webAppDir = path.resolve(process.cwd(), "dist");
-  if (fs.existsSync(webAppDir)) {
+  app2.use("/assets", express.static(path2.resolve(process.cwd(), "assets")));
+  app2.use(express.static(path2.resolve(process.cwd(), "static-build")));
+  const webAppDir = path2.resolve(process.cwd(), "dist");
+  if (fs2.existsSync(webAppDir)) {
     app2.use("/app", express.static(webAppDir));
     app2.get("/app/*", (_req, res) => {
-      res.sendFile(path.join(webAppDir, "index.html"));
+      res.sendFile(path2.join(webAppDir, "index.html"));
     });
-    log("Web app served at /app");
+    log2("Web app served at /app");
   }
-  const websiteDir = path.resolve(process.cwd(), "website");
-  if (fs.existsSync(websiteDir)) {
+  const websiteDir = path2.resolve(process.cwd(), "website");
+  if (fs2.existsSync(websiteDir)) {
     app2.use("/website", express.static(websiteDir));
-    log("Marketing website served at /website");
+    log2("Marketing website served at /website");
   }
-  const downloadsDir = path.resolve(process.cwd(), "dist-electron");
-  if (fs.existsSync(downloadsDir)) {
+  const downloadsDir = path2.resolve(process.cwd(), "dist-electron");
+  if (fs2.existsSync(downloadsDir)) {
     app2.use("/downloads", express.static(downloadsDir, {
       setHeaders: (res, filePath) => {
         if (filePath.endsWith(".exe")) {
-          res.setHeader("Content-Disposition", `attachment; filename="${path.basename(filePath)}"`);
+          res.setHeader("Content-Disposition", `attachment; filename="${path2.basename(filePath)}"`);
           res.setHeader("Content-Type", "application/octet-stream");
         }
       }
     }));
-    log("Downloads served at /downloads");
+    log2("Downloads served at /downloads");
   }
-  log("Expo routing: Checking expo-platform header on / and /manifest");
+  log2("Expo routing: Checking expo-platform header on / and /manifest");
 }
 function setupErrorHandler(app2) {
   app2.use((err, _req, res, _next) => {
@@ -896,12 +1049,12 @@ function setupErrorHandler(app2) {
 }
 function resolveSSLPaths() {
   if (process.env.HTTPS === "false") {
-    log("[SSL] HTTPS=false \u2014 HTTP modunda \xE7al\u0131\u015F\u0131l\u0131yor.");
+    log2("[SSL] HTTPS=false \u2014 HTTP modunda \xE7al\u0131\u015F\u0131l\u0131yor.");
     return null;
   }
-  if (fs.existsSync(path.resolve(process.cwd(), ".env"))) {
+  if (fs2.existsSync(path2.resolve(process.cwd(), ".env"))) {
     try {
-      const envContent = fs.readFileSync(path.resolve(process.cwd(), ".env"), "utf-8");
+      const envContent = fs2.readFileSync(path2.resolve(process.cwd(), ".env"), "utf-8");
       for (const line of envContent.split("\n")) {
         const eqIdx = line.indexOf("=");
         if (eqIdx < 0) continue;
@@ -918,30 +1071,30 @@ function resolveSSLPaths() {
   const key = process.env.SSL_KEY;
   const dom = process.env.SSL_DOMAIN;
   if (cert && key) {
-    if (fs.existsSync(cert) && fs.existsSync(key)) {
-      log(`[SSL] Sertifika y\xFCklendi: ${cert}`);
+    if (fs2.existsSync(cert) && fs2.existsSync(key)) {
+      log2(`[SSL] Sertifika y\xFCklendi: ${cert}`);
       return { cert, key };
     }
-    log(`[SSL] UYARI: SSL_CERT/SSL_KEY bulunamad\u0131 \u2192 HTTP moduna ge\xE7iliyor.`);
+    log2(`[SSL] UYARI: SSL_CERT/SSL_KEY bulunamad\u0131 \u2192 HTTP moduna ge\xE7iliyor.`);
     return null;
   }
   const dockerCert = "/app/ssl/cert.pem";
   const dockerKey = "/app/ssl/key.pem";
-  if (fs.existsSync(dockerCert) && fs.existsSync(dockerKey)) {
-    log(`[SSL] Docker volume sertifikas\u0131 kullan\u0131l\u0131yor: ${dockerCert}`);
+  if (fs2.existsSync(dockerCert) && fs2.existsSync(dockerKey)) {
+    log2(`[SSL] Docker volume sertifikas\u0131 kullan\u0131l\u0131yor: ${dockerCert}`);
     return { cert: dockerCert, key: dockerKey };
   }
   if (dom) {
     const leCert = `/etc/letsencrypt/live/${dom}/fullchain.pem`;
     const leKey = `/etc/letsencrypt/live/${dom}/privkey.pem`;
-    if (fs.existsSync(leCert) && fs.existsSync(leKey)) {
-      log(`[SSL] Let's Encrypt sertifikas\u0131 kullan\u0131l\u0131yor: ${dom}`);
+    if (fs2.existsSync(leCert) && fs2.existsSync(leKey)) {
+      log2(`[SSL] Let's Encrypt sertifikas\u0131 kullan\u0131l\u0131yor: ${dom}`);
       return { cert: leCert, key: leKey };
     }
     const winData = process.env.ProgramData || "C:\\ProgramData";
-    const winSslDir = path.join(winData, "CipherNode", "ssl");
-    if (fs.existsSync(winSslDir)) {
-      const files = fs.readdirSync(winSslDir);
+    const winSslDir = path2.join(winData, "CipherNode", "ssl");
+    if (fs2.existsSync(winSslDir)) {
+      const files = fs2.readdirSync(winSslDir);
       const certFile = files.find(
         (f) => f.includes(dom) && (f.includes("chain") || f.includes("cert")) && f.endsWith(".pem")
       ) || files.find((f) => f.endsWith(".pem") && !f.includes("key"));
@@ -950,19 +1103,19 @@ function resolveSSLPaths() {
       ) || files.find((f) => f.includes("key") && f.endsWith(".pem"));
       if (certFile && keyFile) {
         return {
-          cert: path.join(winSslDir, certFile),
-          key: path.join(winSslDir, keyFile)
+          cert: path2.join(winSslDir, certFile),
+          key: path2.join(winSslDir, keyFile)
         };
       }
     }
-    log(`[SSL] '${dom}' i\xE7in sertifika bulunamad\u0131.`);
-    log(`[SSL]   Linux  : sudo bash scripts/setup-ssl.sh ${dom}`);
-    log(`[SSL]   Windows: powershell -File scripts\\setup-ssl-windows.ps1 -Domain ${dom}`);
-    log(`[SSL]   Docker : SSL_DOMAIN=${dom} docker compose up`);
+    log2(`[SSL] '${dom}' i\xE7in sertifika bulunamad\u0131.`);
+    log2(`[SSL]   Linux  : sudo bash scripts/setup-ssl.sh ${dom}`);
+    log2(`[SSL]   Windows: powershell -File scripts\\setup-ssl-windows.ps1 -Domain ${dom}`);
+    log2(`[SSL]   Docker : SSL_DOMAIN=${dom} docker compose up`);
   }
   if (process.env.HTTPS === "true") {
-    log("[SSL] HTTPS=true ama sertifika bulunamad\u0131 \u2014 HTTP moduna ge\xE7iliyor.");
-    log("[SSL] Docker'da bu normal de\u011Fil; entrypoint script \xE7al\u0131\u015Ft\u0131 m\u0131?");
+    log2("[SSL] HTTPS=true ama sertifika bulunamad\u0131 \u2014 HTTP moduna ge\xE7iliyor.");
+    log2("[SSL] Docker'da bu normal de\u011Fil; entrypoint script \xE7al\u0131\u015Ft\u0131 m\u0131?");
   }
   return null;
 }
@@ -976,22 +1129,22 @@ function resolveSSLPaths() {
   const sslPaths = resolveSSLPaths();
   if (sslPaths) {
     const tlsOptions = {
-      cert: fs.readFileSync(sslPaths.cert),
-      key: fs.readFileSync(sslPaths.key)
+      cert: fs2.readFileSync(sslPaths.cert),
+      key: fs2.readFileSync(sslPaths.key)
     };
     const httpsPort = parseInt(process.env.SSL_PORT || "443", 10);
     const httpsServer = https.createServer(tlsOptions, app);
     await registerRoutes(app, httpsServer);
     setupErrorHandler(app);
     httpsServer.listen(httpsPort, host, () => {
-      log(`[SSL] HTTPS sunucusu ${host}:${httpsPort} \xFCzerinde \xE7al\u0131\u015F\u0131yor`);
+      log2(`[SSL] HTTPS sunucusu ${host}:${httpsPort} \xFCzerinde \xE7al\u0131\u015F\u0131yor`);
     });
     const redirectApp = express();
     redirectApp.use((req, res) => {
       const sslDomain = process.env.SSL_DOMAIN || req.headers.host?.replace(/:\d+$/, "") || "";
       if (req.path.startsWith("/.well-known/acme-challenge/")) {
-        const challengePath = path.resolve(process.cwd(), "var", "www", "certbot", req.path);
-        if (fs.existsSync(challengePath)) {
+        const challengePath = path2.resolve(process.cwd(), "var", "www", "certbot", req.path);
+        if (fs2.existsSync(challengePath)) {
           return res.sendFile(challengePath);
         }
       }
@@ -999,18 +1152,34 @@ function resolveSSLPaths() {
     });
     const httpRedirectPort = parseInt(process.env.HTTP_REDIRECT_PORT || "80", 10);
     http.createServer(redirectApp).listen(httpRedirectPort, host, () => {
-      log(`[SSL] HTTP\u2192HTTPS y\xF6nlendirme sunucusu port ${httpRedirectPort} \xFCzerinde \xE7al\u0131\u015F\u0131yor`);
+      log2(`[SSL] HTTP\u2192HTTPS y\xF6nlendirme sunucusu port ${httpRedirectPort} \xFCzerinde \xE7al\u0131\u015F\u0131yor`);
     });
-    log(`[SSL] Sertifika: ${sslPaths.cert}`);
-    log(`[SSL] \u0130pucu: Certbot otomatik yenileme i\xE7in 'sudo certbot renew --quiet' cron'a ekleyin.`);
+    log2(`[SSL] Sertifika: ${sslPaths.cert}`);
+    log2(`[SSL] \u0130pucu: Certbot otomatik yenileme i\xE7in 'sudo certbot renew --quiet' cron'a ekleyin.`);
   } else {
     const server = await registerRoutes(app);
     setupErrorHandler(app);
-    server.listen(port, host, () => {
-      log(`express server serving on ${host}:${port}`);
+    server.listen(port, host, async () => {
+      log2(`express server serving on ${host}:${port}`);
       if (process.env.SSL_DOMAIN) {
-        log(`[SSL] SSL etkinle\u015Ftirmek i\xE7in: sudo bash scripts/setup-ssl.sh ${process.env.SSL_DOMAIN}`);
+        log2(`[SSL] SSL etkinle\u015Ftirmek i\xE7in: sudo bash scripts/setup-ssl.sh ${process.env.SSL_DOMAIN}`);
       }
+      if (process.env.TOR_ENABLED === "true" || process.env.ONION_ADDRESS) {
+        const onion = await startTorHiddenService(port);
+        if (onion) {
+          log2(`[Tor] Hidden service aktif: http://${onion}`);
+        } else if (process.env.TOR_ENABLED === "true") {
+          log2("[Tor] Hidden service ba\u015Flat\u0131lamad\u0131 \u2014 normal HTTP modunda devam ediliyor.");
+        }
+      }
+    });
+    process.on("SIGINT", () => {
+      stopTor();
+      process.exit(0);
+    });
+    process.on("SIGTERM", () => {
+      stopTor();
+      process.exit(0);
     });
   }
 })();

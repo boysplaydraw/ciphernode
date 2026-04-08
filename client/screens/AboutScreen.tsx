@@ -1,5 +1,5 @@
-import React from "react";
-import { View, ScrollView, StyleSheet, Pressable, Linking } from "react-native";
+import React, { useState, useCallback } from "react";
+import { View, ScrollView, StyleSheet, Pressable, Linking, Alert, ActivityIndicator } from "react-native";
 import { useHeaderHeight } from "@react-navigation/elements";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
@@ -7,6 +7,20 @@ import { ThemedText } from "@/components/ThemedText";
 import { ThemedView } from "@/components/ThemedView";
 import { Colors, Spacing, BorderRadius } from "@/constants/theme";
 import { useLanguage } from "@/constants/language";
+
+const CURRENT_VERSION = "1.0.0";
+const GITHUB_RELEASES_API = "https://api.github.com/repos/boysplaydraw/ciphernode/releases/latest";
+const GITHUB_RELEASES_URL = "https://github.com/boysplaydraw/ciphernode/releases/latest";
+
+function compareVersions(a: string, b: string): number {
+  const pa = a.replace(/^v/, "").split(".").map(Number);
+  const pb = b.replace(/^v/, "").split(".").map(Number);
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+    const diff = (pa[i] ?? 0) - (pb[i] ?? 0);
+    if (diff !== 0) return diff;
+  }
+  return 0;
+}
 
 interface LinkRowProps {
   icon: string;
@@ -38,6 +52,59 @@ export default function AboutScreen() {
   const headerHeight = useHeaderHeight();
   const insets = useSafeAreaInsets();
   const { language } = useLanguage();
+  const [updateStatus, setUpdateStatus] = useState<"idle" | "checking" | "up-to-date" | "available" | "error">("idle");
+  const [latestVersion, setLatestVersion] = useState<string | null>(null);
+
+  const checkForUpdates = useCallback(async () => {
+    setUpdateStatus("checking");
+    try {
+      // Electron: IPC üzerinden
+      const win = typeof window !== "undefined" ? (window as any) : null;
+      if (win?.electronAPI?.updater) {
+        win.electronAPI.updater.onStatus((info: any) => {
+          if (info.status === "available") {
+            setLatestVersion(info.version);
+            setUpdateStatus("available");
+            Alert.alert(
+              language === "tr" ? "Güncelleme Mevcut" : "Update Available",
+              `v${info.version} ${language === "tr" ? "mevcut. Yüklenince bildirim alacaksınız." : "is available and will be installed on restart."}`,
+            );
+          } else if (info.status === "not-available") {
+            setUpdateStatus("up-to-date");
+          } else if (info.status === "error") {
+            setUpdateStatus("error");
+          }
+        });
+        win.electronAPI.updater.check();
+        return;
+      }
+
+      // Mobil: GitHub API
+      const res = await fetch(GITHUB_RELEASES_API, {
+        headers: { Accept: "application/vnd.github+json" },
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      const latest = (data.tag_name as string).replace(/^v/, "");
+      setLatestVersion(latest);
+
+      if (compareVersions(latest, CURRENT_VERSION) > 0) {
+        setUpdateStatus("available");
+        Alert.alert(
+          language === "tr" ? "Güncelleme Mevcut" : "Update Available",
+          `v${latest} ${language === "tr" ? "mevcut. İndirmek için tıklayın." : "is available. Tap to download."}`,
+          [
+            { text: language === "tr" ? "İptal" : "Cancel", style: "cancel" },
+            { text: language === "tr" ? "İndir" : "Download", onPress: () => Linking.openURL(GITHUB_RELEASES_URL) },
+          ],
+        );
+      } else {
+        setUpdateStatus("up-to-date");
+      }
+    } catch {
+      setUpdateStatus("error");
+    }
+  }, [language]);
 
   const t = {
     version: language === "tr" ? "Sürüm" : "Version",
@@ -86,7 +153,32 @@ export default function AboutScreen() {
             <Feather name="shield" size={48} color={Colors.dark.primary} />
           </View>
           <ThemedText style={styles.appName}>CipherNode</ThemedText>
-          <ThemedText style={styles.version}>{t.version} 1.0.0</ThemedText>
+          <ThemedText style={styles.version}>{t.version} {CURRENT_VERSION}</ThemedText>
+          <Pressable
+            onPress={updateStatus === "checking" ? undefined : checkForUpdates}
+            style={({ pressed }) => [styles.updateBtn, pressed && { opacity: 0.7 }]}
+          >
+            {updateStatus === "checking" ? (
+              <ActivityIndicator size="small" color={Colors.dark.primary} />
+            ) : (
+              <Feather
+                name={updateStatus === "available" ? "download" : updateStatus === "up-to-date" ? "check-circle" : "refresh-cw"}
+                size={14}
+                color={updateStatus === "available" ? Colors.dark.success : updateStatus === "up-to-date" ? Colors.dark.success : Colors.dark.primary}
+              />
+            )}
+            <ThemedText style={[styles.updateBtnText, updateStatus === "available" && { color: Colors.dark.success }, updateStatus === "up-to-date" && { color: Colors.dark.success }]}>
+              {updateStatus === "checking"
+                ? (language === "tr" ? "Kontrol ediliyor…" : "Checking…")
+                : updateStatus === "available"
+                ? (language === "tr" ? `v${latestVersion} mevcut` : `v${latestVersion} available`)
+                : updateStatus === "up-to-date"
+                ? (language === "tr" ? "Güncel" : "Up to date")
+                : updateStatus === "error"
+                ? (language === "tr" ? "Tekrar dene" : "Retry")
+                : (language === "tr" ? "Güncelleme Kontrol Et" : "Check for Updates")}
+            </ThemedText>
+          </Pressable>
         </View>
 
         <View style={styles.descSection}>
@@ -200,6 +292,23 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: Colors.dark.textSecondary,
     marginTop: Spacing.xs,
+  },
+  updateBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginTop: Spacing.sm,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: 6,
+    borderRadius: BorderRadius.full,
+    backgroundColor: Colors.dark.backgroundSecondary,
+    minWidth: 140,
+    justifyContent: "center",
+  },
+  updateBtnText: {
+    fontSize: 12,
+    color: Colors.dark.primary,
+    fontWeight: "500",
   },
   descSection: {
     marginBottom: Spacing.xl,

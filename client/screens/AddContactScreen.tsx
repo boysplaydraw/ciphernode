@@ -8,6 +8,7 @@ import {
   Platform,
 } from "react-native";
 import { useNavigation, CommonActions } from "@react-navigation/native";
+import { useHeaderHeight } from "@react-navigation/elements";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { Feather } from "@expo/vector-icons";
@@ -35,7 +36,12 @@ type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
 export default function AddContactScreen() {
   const navigation = useNavigation<NavigationProp>();
+  const headerHeight = useHeaderHeight();
   const insets = useSafeAreaInsets();
+  const safeTopOffset =
+    Platform.OS === "android"
+      ? Math.max(headerHeight, insets.top + 56)
+      : headerHeight;
   const { identity, loading } = useIdentity();
   const { language } = useLanguage();
 
@@ -234,7 +240,7 @@ export default function AddContactScreen() {
       contentContainerStyle={[
         styles.content,
         {
-          paddingTop: Spacing.xl,
+          paddingTop: safeTopOffset + Spacing.xl,
           paddingBottom: insets.bottom + Spacing.xl,
         },
       ]}

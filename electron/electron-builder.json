@@ -75,6 +75,7 @@
     ],
     "icon": "assets/images/icon.png",
     "category": "Network",
+    "maintainer": "CipherNode <support@cipher-node.site>",
     "extraResources": [
       {
         "from": "tor-bin/linux-${arch}",

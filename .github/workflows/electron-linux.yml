@@ -21,7 +21,7 @@ jobs:
           cache: npm
 
       - name: Install system dependencies
-        run: sudo apt-get install -y libarchive-tools rpm
+        run: sudo apt-get update && sudo apt-get install -y libarchive-tools rpm
 
       - name: Install dependencies
         run: npm ci

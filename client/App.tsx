@@ -99,13 +99,16 @@ export default function App() {
     });
 
     // AppState — arka plandan öne gelince biyometrik kilit uygula
-    const handleAppStateChange = (nextState: AppStateStatus) => {
-      if (
-        appState.current === "background" &&
-        nextState === "active" &&
-        biometricEnabled
-      ) {
-        setIsLocked(true);
+    // Storage'dan okuyarak stale state sorununu önle (ayarlar değişmiş olabilir)
+    const handleAppStateChange = async (nextState: AppStateStatus) => {
+      if (appState.current === "background" && nextState === "active") {
+        const priv = await getPrivacySettings();
+        if (priv.biometricLock) {
+          setBiometricEnabled(true);
+          setIsLocked(true);
+        } else {
+          setBiometricEnabled(false);
+        }
       }
       appState.current = nextState;
     };
@@ -119,7 +122,7 @@ export default function App() {
       unsubMessage();
       appStateSub.remove();
     };
-  }, [biometricEnabled]);
+  }, []);
 
   // Expo OTA güncelleme kontrolü (sadece production build'de çalışır)
   useEffect(() => {

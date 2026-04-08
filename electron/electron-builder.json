@@ -93,6 +93,12 @@
     "createStartMenuShortcut": true
   },
 
+  "flatpak": {
+    "baseVersion": "23.08",
+    "runtimeVersion": "23.08",
+    "branch": "stable"
+  },
+
   "publish": {
     "provider": "github",
     "owner": "boysplaydraw",

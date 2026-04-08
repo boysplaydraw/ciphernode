@@ -27,9 +27,12 @@ COPY --from=builder /app/node_modules  ./node_modules
 COPY --from=builder /app/server_dist   ./server_dist
 COPY --from=builder /app/package.json  ./
 
-# Sunucu şablon dosyaları
+# Sunucu şablon dosyaları (opsiyonel — inline fallback mevcut)
 RUN mkdir -p server/templates
 COPY --chown=ciphernode:nodejs server/templates ./server/templates
+
+# Marketing website (website/index.html varsa serve edilir)
+COPY --chown=ciphernode:nodejs website ./website
 
 # SSL sertifika dizini (volume ile kalici hale getirilir)
 RUN mkdir -p /app/ssl && chown -R ciphernode:nodejs /app/ssl

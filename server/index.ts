@@ -1,6 +1,7 @@
 import express from "express";
 import type { Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
+import { startTorHiddenService, stopTor, getOnionAddress } from "./tor-hidden-service";
 import * as fs from "fs";
 import * as path from "path";
 import * as https from "https";
@@ -415,11 +416,26 @@ function resolveSSLPaths(): { cert: string; key: string } | null {
 
     setupErrorHandler(app);
 
-    server.listen(port, host, () => {
+    server.listen(port, host, async () => {
       log(`express server serving on ${host}:${port}`);
       if (process.env.SSL_DOMAIN) {
         log(`[SSL] SSL etkinleştirmek için: sudo bash scripts/setup-ssl.sh ${process.env.SSL_DOMAIN}`);
       }
+
+      // ── Opsiyonel Tor Hidden Service ──────────────────────────────────
+      // TOR_ENABLED=true veya ONION_ADDRESS env var ile aktif olur
+      if (process.env.TOR_ENABLED === "true" || process.env.ONION_ADDRESS) {
+        const onion = await startTorHiddenService(port);
+        if (onion) {
+          log(`[Tor] Hidden service aktif: http://${onion}`);
+        } else if (process.env.TOR_ENABLED === "true") {
+          log("[Tor] Hidden service başlatılamadı — normal HTTP modunda devam ediliyor.");
+        }
+      }
     });
+
+    // Temiz kapatma
+    process.on("SIGINT", () => { stopTor(); process.exit(0); });
+    process.on("SIGTERM", () => { stopTor(); process.exit(0); });
   }
 })();

@@ -2,6 +2,7 @@ import type { Express } from "express";
 import { createServer, type Server } from "node:http";
 import type { Server as HttpsServer } from "node:https";
 import { Server as SocketIOServer } from "socket.io";
+import { getOnionAddress } from "./tor-hidden-service";
 
 interface PendingMessage {
   id: string;
@@ -302,8 +303,7 @@ export async function registerRoutes(app: Express, existingServer?: Server | Htt
    * Tor hidden service aktifse bu endpoint üzerinden adres öğrenilebilir
    */
   app.get("/api/onion-address", (_req, res) => {
-    const onionAddress = process.env.ONION_ADDRESS || null;
-    res.json({ onionAddress });
+    res.json({ onionAddress: getOnionAddress() });
   });
 
   /**

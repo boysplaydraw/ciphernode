@@ -137,7 +137,7 @@ export default function AboutScreen() {
             <LinkRow
               icon="github"
               title={t.sourceCode}
-              url="https://github.com/ciphernode/ciphernode"
+              url="https://github.com/boysplaydraw/ciphernode"
             />
             <LinkRow
               icon="file-text"
@@ -147,7 +147,7 @@ export default function AboutScreen() {
             <LinkRow
               icon="book"
               title={t.documentation}
-              url="https://github.com/ciphernode/ciphernode#readme"
+              url="https://github.com/boysplaydraw/ciphernode#readme"
             />
           </View>
         </View>

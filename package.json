@@ -24,7 +24,7 @@
     "web:dev": "concurrently \"npm run server:dev\" \"npx expo start --web --port 8081\"",
     "electron:dev": "concurrently \"npm run server:dev\" \"npx expo start --web\" \"wait-on http://localhost:8081 && electron .\"",
     "electron:build:web": "npx expo export --platform web --output-dir dist",
-    "electron:compile": "tsc --project electron/tsconfig.json",
+    "electron:compile": "esbuild electron/main.ts electron/tor-manager.ts electron/onion-share.ts electron/preload.ts --platform=node --external:electron --bundle --outdir=electron/dist --format=cjs",
     "electron:pack": "npm run electron:build:web && npm run electron:compile && electron-builder --config electron/electron-builder.json",
     "electron:win": "cross-env CSC_IDENTITY_AUTO_DISCOVERY=false WIN_CSC_LINK=\"\" npm run electron:pack -- --win",
     "electron:mac": "npm run electron:pack -- --mac",

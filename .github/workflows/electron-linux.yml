@@ -64,9 +64,21 @@ jobs:
           path: dist-electron/*.rpm
           if-no-files-found: warn
 
+      - name: Upload pacman artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-pacman
+          path: dist-electron/*.pkg.tar.zst
+          if-no-files-found: warn
+
       - name: Upload to GitHub Release (tag push only)
         if: startsWith(github.ref, 'refs/tags/v')
         run: |
-          gh release upload "${GITHUB_REF_NAME}" dist-electron/*.AppImage dist-electron/*.deb dist-electron/*.rpm --clobber
+          gh release upload "${GITHUB_REF_NAME}" \
+            dist-electron/*.AppImage \
+            dist-electron/*.deb \
+            dist-electron/*.rpm \
+            dist-electron/*.pkg.tar.zst \
+            --clobber
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

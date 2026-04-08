@@ -3,6 +3,7 @@ name: Android APK
 on:
   push:
     branches: [master]
+    tags: ["v*"]
   workflow_dispatch:
 
 jobs:
@@ -31,17 +32,27 @@ jobs:
       - name: Build APK
         run: eas build --platform android --profile production --non-interactive
 
-      - name: Download APK
+      - name: Download APK from EAS
         run: |
           APK_URL=$(eas build:list --platform android --limit 1 --json --non-interactive | node -e "const d=require('fs').readFileSync('/dev/stdin','utf8'); console.log(JSON.parse(d)[0].artifacts?.buildUrl || '')")
           echo "APK_URL=$APK_URL" >> $GITHUB_ENV
           if [ -n "$APK_URL" ]; then
-            curl -L "$APK_URL" -o ciphernode.apk
+            curl -L "$APK_URL" -o CipherNode.apk
+            echo "APK_FOUND=true" >> $GITHUB_ENV
+          else
+            echo "APK_FOUND=false" >> $GITHUB_ENV
           fi
 
       - name: Upload APK artifact
+        if: env.APK_FOUND == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: ciphernode-apk
-          path: ciphernode.apk
+          path: CipherNode.apk
           if-no-files-found: warn
+
+      - name: Upload to GitHub Release (tag push only)
+        if: startsWith(github.ref, 'refs/tags/v') && env.APK_FOUND == 'true'
+        run: gh release upload "${GITHUB_REF_NAME}" CipherNode.apk --clobber
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

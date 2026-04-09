@@ -1,0 +1,61 @@
+name: Electron Windows
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build Expo web
+        run: npx expo export --platform web --output-dir dist
+
+      - name: Compile Electron (esbuild)
+        run: |
+          npx esbuild electron/main.ts electron/tor-manager.ts electron/onion-share.ts electron/preload.ts `
+            --platform=node `
+            --external:electron `
+            --bundle `
+            --outdir=electron/dist `
+            --format=cjs
+
+      - name: Build Windows packages
+        run: npx electron-builder --config electron/electron-builder.json --win --x64
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+          WIN_CSC_LINK: ""
+
+      - name: List build output
+        run: dir dist-electron
+
+      - name: Upload NSIS installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-nsis
+          path: dist-electron/*.exe
+          if-no-files-found: warn
+
+      - name: Upload to GitHub Release (tag push only)
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          gh release upload "$env:GITHUB_REF_NAME" `
+            (Get-ChildItem dist-electron\*.exe | Select-Object -ExpandProperty FullName) `
+            --clobber
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

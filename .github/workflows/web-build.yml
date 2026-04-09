@@ -1,0 +1,42 @@
+name: Web Build
+
+on:
+  push:
+    branches: [master]
+    tags: ["v*"]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build Expo web
+        run: npx expo export --platform web --output-dir dist
+
+      - name: Upload web artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-dist
+          path: dist/
+          if-no-files-found: error
+
+      - name: Zip and upload to GitHub Release (tag push only)
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          zip -r CipherNode-web.zip dist/
+          gh release upload "${GITHUB_REF_NAME}" CipherNode-web.zip --clobber
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -57,9 +57,18 @@ import {
   onWebRTCSignal,
   sendP2PFileOffer,
   onP2PFileIncoming,
+  isRelayConnected,
+  onRelayStatusChange,
   type IncomingFileNotification,
   type P2PFileOffer,
 } from "@/lib/socket";
+import {
+  connectToPeer,
+  sendP2PMessage,
+  onP2PMessage,
+  isPeerConnected,
+  listenForIncomingChannels,
+} from "@/lib/webrtc-channel";
 import {
   shareFile,
   downloadAndDecryptFile,
@@ -321,6 +330,54 @@ export default function ChatThreadScreen() {
       ),
     });
   }, [navigation, contact, contactId]);
+
+  // P2P DataChannel üzerinden gelen mesajları dinle (relay yokken)
+  useEffect(() => {
+    const unsub = onP2PMessage(async (from, encrypted, timestamp) => {
+      if (from !== contactId || !identity) return;
+      try {
+        const { decryptMessage } = await import("@/lib/crypto");
+        const { content } = await decryptMessage(
+          encrypted,
+          identity.privateKey,
+          contact?.publicKey,
+        );
+        const msgId = generateMessageId();
+        const msg: Message = {
+          id: msgId,
+          content,
+          encrypted,
+          senderId: from,
+          recipientId: identity.id,
+          timestamp,
+          status: "received",
+        };
+        await saveMessage(contactId, msg);
+        setMessages((prev) => [...prev, msg]);
+      } catch {}
+    });
+    return unsub;
+  }, [contactId, identity, contact]);
+
+  // Relay durumu değişince P2P bağlantısını yönet
+  useEffect(() => {
+    const unsub = onRelayStatusChange((healthy) => {
+      if (!healthy && contact?.nostrPubkey && isWebRTCAvailable()) {
+        // Relay düştü → P2P bağlantısını hazırla
+        connectToPeer(contactId, contact.nostrPubkey).catch(() => {});
+      }
+    });
+    return unsub;
+  }, [contactId, contact]);
+
+  // Gelen P2P channel offer'larını dinle
+  useEffect(() => {
+    const unsub = listenForIncomingChannels((peerId) => {
+      if (peerId === contactId) return contact?.nostrPubkey;
+      return undefined;
+    });
+    return unsub;
+  }, [contactId, contact]);
 
   useEffect(() => {
     // Mesaj zaten App.tsx global handler tarafından kaydedildi,
@@ -781,7 +838,28 @@ export default function ChatThreadScreen() {
     setMessages((prev) => [...prev, message]);
     setInputText("");
 
-    socketSendMessage(contactId, encryptedContent, messageId);
+    // Mesaj gönderme: önce relay dene, yoksa P2P DataChannel kullan
+    if (isRelayConnected()) {
+      socketSendMessage(contactId, encryptedContent, messageId);
+    } else if (contact.nostrPubkey) {
+      // Relay yok → P2P bağlantısı kur (yoksa) ve gönder
+      if (!isPeerConnected(contactId)) {
+        connectToPeer(contactId, contact.nostrPubkey).catch(() => {});
+      }
+      // DataChannel açılınca gönder (kısa gecikme ile dene)
+      setTimeout(() => {
+        const sent = sendP2PMessage(contactId, encryptedContent);
+        if (!sent) {
+          // Kanal henüz hazır değil — kuyruğa almak yerine kullanıcıyı bildir
+          setMessages((prev) =>
+            prev.map((m) => m.id === messageId ? { ...m, status: "sending" } : m),
+          );
+        }
+      }, 500);
+    } else {
+      // Ne relay ne Nostr pubkey — mesaj kuyrukta beklesin
+      console.warn("[Chat] Relay yok, Nostr pubkey yok — mesaj kuyruğa alındı");
+    }
 
     // Mesaj gönderildi → "sent" yap
     setMessages((prev) =>

@@ -34,6 +34,7 @@ export interface GroupMember {
   displayName: string;
   role: "admin" | "member";
   addedAt: number;
+  nostrPubkey?: string;
 }
 
 export interface Group {

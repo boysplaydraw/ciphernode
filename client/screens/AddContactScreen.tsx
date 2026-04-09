@@ -130,6 +130,7 @@ export default function AddContactScreen() {
     try {
       // 1. Önce sunucudan public key'i çek (REST API)
       let publicKey = "";
+      let nostrPubkey = "";
       let keySource = "none";
 
       try {
@@ -142,6 +143,9 @@ export default function AddContactScreen() {
           if (data.publicKey) {
             publicKey = data.publicKey;
             keySource = "api";
+          }
+          if (data.nostrPubkey) {
+            nostrPubkey = data.nostrPubkey;
           }
         }
       } catch {
@@ -180,6 +184,7 @@ export default function AddContactScreen() {
         fingerprint,
         displayName: "",
         addedAt: Date.now(),
+        ...(nostrPubkey ? { nostrPubkey } : {}),
       });
 
       // Kişi listesini diğer cihazlarla senkronize et
@@ -328,6 +333,8 @@ export default function AddContactScreen() {
               <QRCode
                 value={JSON.stringify({
                   id: identity.id,
+                  pk: identity.publicKey,
+                  npk: identity.nostrPubkey ?? "",
                 })}
                 size={180}
                 backgroundColor={Colors.dark.backgroundSecondary}

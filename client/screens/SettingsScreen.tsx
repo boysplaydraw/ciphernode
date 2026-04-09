@@ -37,7 +37,7 @@ import {
 import { exportIdentityBackup, importIdentityFromBackup } from "@/lib/crypto";
 import * as Clipboard from "expo-clipboard";
 import * as ScreenCapture from "expo-screen-capture";
-import { reconnectWithTor, setStegMode, setP2POnlyMode } from "@/lib/socket";
+import { reconnectWithTor, setStegMode, setP2POnlyMode, activateP2PMode, deactivateP2PMode } from "@/lib/socket";
 import {
   SUPPORTED_LANGUAGES,
   type Language,
@@ -296,17 +296,25 @@ export default function SettingsScreen() {
         }
       }
 
-      // P2P Only modu: socket'e bildir
+      // P2P Only modu: relay'i kes, Nostr+WebRTC ile devam et
       if (key === "p2pOnlyMode") {
         setP2POnlyMode(value);
         if (value) {
+          await activateP2PMode();
           Alert.alert(
+            currentLanguage === "tr" ? "P2P Modu Aktif" : "P2P Mode Active",
             currentLanguage === "tr"
-              ? "Sadece P2P Modu Aktif"
-              : "P2P Only Mode Active",
+              ? "Relay sunucusu devre dışı. Tüm iletişim şimdi Nostr sinyalleme + WebRTC DataChannel üzerinden yapılıyor."
+              : "Relay server disabled. All communication now goes through Nostr signaling + WebRTC DataChannel.",
+            [{ text: "OK" }],
+          );
+        } else {
+          await deactivateP2PMode();
+          Alert.alert(
+            currentLanguage === "tr" ? "Relay Modu Aktif" : "Relay Mode Active",
             currentLanguage === "tr"
-              ? "Mesajlar artık yalnızca alıcı çevrimiçiyken iletilir. Çevrimdışı kullanıcılara mesaj kuyruğa alınmaz."
-              : "Messages will only be delivered when the recipient is online. No offline message queuing.",
+              ? "Relay sunucusuna yeniden bağlanıldı."
+              : "Reconnected to relay server.",
             [{ text: "OK" }],
           );
         }
@@ -1017,14 +1025,14 @@ export default function SettingsScreen() {
           </ThemedText>
           <View style={styles.sectionContent}>
             <SettingsRow
-              icon="wifi"
+              icon="radio"
               title={
                 currentLanguage === "tr" ? "Sadece P2P Modu" : "P2P Only Mode"
               }
               subtitle={
                 currentLanguage === "tr"
-                  ? "Çevrimdışı kullanıcılara mesaj kuyruğa alınmaz"
-                  : "Messages not queued for offline recipients"
+                  ? "Relay sunucusunu devre dışı bırak, Nostr + WebRTC kullan"
+                  : "Disable relay server, use Nostr + WebRTC directly"
               }
               rightElement={
                 <Switch

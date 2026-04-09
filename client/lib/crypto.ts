@@ -1,5 +1,6 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as openpgp from "openpgp";
+import { generateSecretKey, getPublicKey as nostrGetPublicKey } from "nostr-tools";
 
 const IDENTITY_STORAGE_KEY = "@ciphernode/identity";
 
@@ -10,6 +11,10 @@ export interface UserIdentity {
   fingerprint: string;
   displayName: string;
   createdAt: number;
+  /** Nostr secp256k1 private key (hex) — P2P sinyalleme için */
+  nostrPrivkey?: string;
+  /** Nostr secp256k1 public key (hex) — kişilere paylaşılır */
+  nostrPubkey?: string;
 }
 
 export interface Contact {
@@ -18,6 +23,16 @@ export interface Contact {
   fingerprint: string;
   displayName: string;
   addedAt: number;
+  /** Karşı tarafın Nostr public key'i — relay yokken P2P sinyalleme için */
+  nostrPubkey?: string;
+}
+
+/** Nostr keypair üret (secp256k1) */
+export function generateNostrKeyPair(): { nostrPrivkey: string; nostrPubkey: string } {
+  const secretKey = generateSecretKey();
+  const pubkey = nostrGetPublicKey(secretKey);
+  const privkey = Buffer.from(secretKey).toString("hex");
+  return { nostrPrivkey: privkey, nostrPubkey: pubkey };
 }
 
 export function generateShortId(fingerprint: string): string {
@@ -60,13 +75,20 @@ export async function getOrCreateIdentity(): Promise<UserIdentity> {
     // id alanı yoksa fingerprint'ten türet ve kaydet
     if (!parsed.id && parsed.fingerprint) {
       parsed.id = generateShortId(parsed.fingerprint);
-      await AsyncStorage.setItem(IDENTITY_STORAGE_KEY, JSON.stringify(parsed));
     }
+    // Eski kimlikte Nostr key yoksa üret ve kaydet (geriye dönük uyumluluk)
+    if (!parsed.nostrPrivkey || !parsed.nostrPubkey) {
+      const nostrKeys = generateNostrKeyPair();
+      parsed.nostrPrivkey = nostrKeys.nostrPrivkey;
+      parsed.nostrPubkey = nostrKeys.nostrPubkey;
+    }
+    await AsyncStorage.setItem(IDENTITY_STORAGE_KEY, JSON.stringify(parsed));
     return parsed;
   }
 
   // Hata durumunda boş key fallback'e DÜŞME — hatayı yukarı fırlat
   const { publicKey, privateKey, fingerprint, id } = await generateKeyPair();
+  const { nostrPrivkey, nostrPubkey } = generateNostrKeyPair();
 
   const identity: UserIdentity = {
     id,
@@ -75,6 +97,8 @@ export async function getOrCreateIdentity(): Promise<UserIdentity> {
     fingerprint,
     displayName: "",
     createdAt: Date.now(),
+    nostrPrivkey,
+    nostrPubkey,
   };
 
   await AsyncStorage.setItem(IDENTITY_STORAGE_KEY, JSON.stringify(identity));

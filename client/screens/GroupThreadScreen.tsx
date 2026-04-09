@@ -6,6 +6,7 @@ import {
   StyleSheet,
   Pressable,
   Platform,
+  Alert,
 } from "react-native";
 import {
   useNavigation,
@@ -21,7 +22,6 @@ import * as Haptics from "expo-haptics";
 import { ThemedText } from "@/components/ThemedText";
 import { ThemedView } from "@/components/ThemedView";
 import { Colors, Spacing, BorderRadius, Fonts } from "@/constants/theme";
-import { KeyboardAwareScrollViewCompat } from "@/components/KeyboardAwareScrollViewCompat";
 import {
   getGroup,
   saveGroupMessage,
@@ -32,9 +32,22 @@ import {
   type Group,
   type Message,
 } from "@/lib/storage";
-import { sendGroupMessage, onGroupMessage } from "@/lib/socket";
+import {
+  sendGroupMessage,
+  onGroupMessage,
+  isRelayConnected,
+  onRelayStatusChange,
+} from "@/lib/socket";
+import {
+  sendGroupMessageP2P,
+  onGroupP2PMessage,
+  connectToPeer,
+  listenForIncomingChannels,
+} from "@/lib/webrtc-channel";
+import { isWebRTCAvailable } from "@/lib/webrtc-p2p";
 import { useIdentity } from "@/hooks/useIdentity";
 import type { ChatsStackParamList } from "@/navigation/ChatsStackNavigator";
+import ConnectionStatus from "@/components/ConnectionStatus";
 
 type NavigationProp = NativeStackNavigationProp<
   ChatsStackParamList,
@@ -47,6 +60,7 @@ interface MessageBubbleProps {
   isOwn: boolean;
   senderName: string;
   currentTime: number;
+  isP2P?: boolean;
 }
 
 function formatRemainingTime(expiresAt: number, now: number): string {
@@ -67,6 +81,7 @@ function MessageBubble({
   isOwn,
   senderName,
   currentTime,
+  isP2P,
 }: MessageBubbleProps) {
   const formatTime = (timestamp: number) => {
     return new Date(timestamp).toLocaleTimeString([], {
@@ -89,6 +104,14 @@ function MessageBubble({
           {message.content}
         </ThemedText>
         <View style={styles.messageFooter}>
+          {isP2P && (
+            <Feather
+              name="radio"
+              size={10}
+              color={isOwn ? Colors.dark.buttonText + "99" : Colors.dark.success}
+              style={{ marginRight: 4 }}
+            />
+          )}
           {message.expiresAt ? (
             <View style={styles.timerContainer}>
               <Feather
@@ -132,6 +155,8 @@ export default function GroupThreadScreen() {
   const [inputText, setInputText] = useState("");
   const [messageTimer, setMessageTimer] = useState(0);
   const [currentTime, setCurrentTime] = useState(Date.now());
+  const [relayOnline, setRelayOnline] = useState(isRelayConnected());
+  const [p2pMessageIds] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     const tickerInterval = setInterval(() => setCurrentTime(Date.now()), 1000);
@@ -155,11 +180,7 @@ export default function GroupThreadScreen() {
       await cleanupExpiredMessagesForGroup(groupId);
       const g = await getGroup(groupId);
       if (g) {
-        const clonedGroup = {
-          ...g,
-          messages: g.messages.map((m) => ({ ...m })),
-        };
-        setGroup(clonedGroup);
+        setGroup({ ...g, messages: g.messages.map((m) => ({ ...m })) });
       }
     }, 5000);
     return () => clearInterval(interval);
@@ -171,40 +192,91 @@ export default function GroupThreadScreen() {
     }, [loadGroup]),
   );
 
+  // Relay mesajlarını dinle
   useEffect(() => {
     const unsubscribe = onGroupMessage(async (msg) => {
-      if (msg.groupId === groupId) {
-        const newMessage: Message = {
-          id: generateMessageId(),
-          content: msg.content || msg.encrypted,
-          encrypted: msg.encrypted,
-          senderId: msg.from,
-          recipientId: groupId,
-          timestamp: msg.timestamp,
-          status: "received",
-          groupId,
-        };
-        await saveGroupMessage(groupId, newMessage);
-        loadGroup();
-      }
+      if (msg.groupId !== groupId) return;
+      const newMessage: Message = {
+        id: generateMessageId(),
+        content: msg.content || msg.encrypted,
+        encrypted: msg.encrypted,
+        senderId: msg.from,
+        recipientId: groupId,
+        timestamp: msg.timestamp,
+        status: "received",
+        groupId,
+      };
+      await saveGroupMessage(groupId, newMessage);
+      loadGroup();
     });
     return unsubscribe;
   }, [groupId, loadGroup]);
+
+  // P2P grup mesajlarını dinle
+  useEffect(() => {
+    const unsub = onGroupP2PMessage(async (from, gId, content, encrypted, timestamp) => {
+      if (gId !== groupId) return;
+      const msgId = generateMessageId();
+      p2pMessageIds.add(msgId);
+      const newMessage: Message = {
+        id: msgId,
+        content: content || encrypted,
+        encrypted,
+        senderId: from,
+        recipientId: groupId,
+        timestamp,
+        status: "received",
+        groupId,
+      };
+      await saveGroupMessage(groupId, newMessage);
+      loadGroup();
+    });
+    return unsub;
+  }, [groupId, loadGroup, p2pMessageIds]);
+
+  // Relay durumu değişince güncelle ve P2P bağlantılarını kur
+  useEffect(() => {
+    const unsub = onRelayStatusChange((healthy) => {
+      setRelayOnline(healthy);
+      if (!healthy && group && isWebRTCAvailable()) {
+        // Relay düştü → gruptaki tüm üyelerle P2P bağlantı kur
+        const others = group.members.filter(
+          (m) => m.id !== identity?.id && m.nostrPubkey,
+        );
+        others.forEach((m) => {
+          connectToPeer(m.id, m.nostrPubkey!).catch(() => {});
+        });
+      }
+    });
+    return unsub;
+  }, [group, identity]);
+
+  // Gelen P2P channel offer'larını dinle
+  useEffect(() => {
+    const unsub = listenForIncomingChannels((peerId) => {
+      const member = group?.members.find((m) => m.id === peerId);
+      return member?.nostrPubkey;
+    });
+    return unsub;
+  }, [group]);
 
   useEffect(() => {
     if (group) {
       navigation.setOptions({
         headerTitle: group.name,
         headerRight: () => (
-          <Pressable
-            onPress={() => navigation.navigate("GroupInfo", { groupId })}
-            style={({ pressed }) => [
-              styles.headerButton,
-              pressed && styles.headerButtonPressed,
-            ]}
-          >
-            <Feather name="info" size={20} color={Colors.dark.text} />
-          </Pressable>
+          <View style={{ flexDirection: "row", alignItems: "center" }}>
+            <ConnectionStatus showLabel={false} />
+            <Pressable
+              onPress={() => navigation.navigate("GroupInfo", { groupId })}
+              style={({ pressed }) => [
+                styles.headerButton,
+                pressed && styles.headerButtonPressed,
+              ]}
+            >
+              <Feather name="info" size={20} color={Colors.dark.text} />
+            </Pressable>
+          </View>
         ),
       });
     }
@@ -224,8 +296,9 @@ export default function GroupThreadScreen() {
     }
 
     const content = inputText.trim();
+    const msgId = generateMessageId();
     const message: Message = {
-      id: generateMessageId(),
+      id: msgId,
       content,
       encrypted: "",
       senderId: identity.id,
@@ -237,9 +310,36 @@ export default function GroupThreadScreen() {
     };
 
     await saveGroupMessage(groupId, message);
-    sendGroupMessage(groupId, content, content);
     setInputText("");
     loadGroup();
+
+    // Gönderme yöntemi: relay varsa relay, yoksa P2P mesh
+    if (relayOnline) {
+      sendGroupMessage(groupId, content, content);
+    } else if (isWebRTCAvailable()) {
+      // Kendimiz hariç diğer tüm üyelere P2P gönder
+      const others = group.members.filter(
+        (m) => m.id !== identity.id,
+      );
+      const nostrMembers = others.map((m) => ({
+        id: m.id,
+        nostrPubkey: m.nostrPubkey,
+      }));
+      const sent = await sendGroupMessageP2P(nostrMembers, groupId, content);
+      if (sent === 0 && others.length > 0) {
+        Alert.alert(
+          "P2P Bağlantı",
+          "Üyelere bağlanılıyor, mesaj kısa süre içinde iletilecek.",
+          [{ text: "Tamam" }],
+        );
+      }
+    } else {
+      Alert.alert(
+        "Bağlantı Yok",
+        "Relay sunucusu bağlı değil ve WebRTC bu platformda desteklenmiyor.",
+        [{ text: "Tamam" }],
+      );
+    }
 
     setTimeout(() => {
       flatListRef.current?.scrollToEnd({ animated: true });
@@ -249,13 +349,23 @@ export default function GroupThreadScreen() {
   if (!group) {
     return (
       <ThemedView style={styles.container}>
-        <ThemedText style={styles.loadingText}>Loading...</ThemedText>
+        <ThemedText style={styles.loadingText}>Yükleniyor...</ThemedText>
       </ThemedView>
     );
   }
 
   return (
     <ThemedView style={styles.container}>
+      {/* Relay kapalıyken P2P modu bildirim bandı */}
+      {!relayOnline && (
+        <View style={styles.p2pBanner}>
+          <Feather name="radio" size={12} color={Colors.dark.success} />
+          <ThemedText style={styles.p2pBannerText}>
+            P2P Modu — Nostr + WebRTC
+          </ThemedText>
+        </View>
+      )}
+
       <FlatList
         ref={flatListRef}
         data={group.messages}
@@ -266,12 +376,13 @@ export default function GroupThreadScreen() {
             isOwn={item.senderId === identity?.id}
             senderName={getSenderName(item.senderId)}
             currentTime={currentTime}
+            isP2P={p2pMessageIds.has(item.id)}
           />
         )}
         contentContainerStyle={[
           styles.messagesList,
           {
-            paddingTop: headerHeight + Spacing.md,
+            paddingTop: headerHeight + Spacing.md + (!relayOnline ? 32 : 0),
             paddingBottom: Spacing.md,
           },
         ]}
@@ -280,7 +391,7 @@ export default function GroupThreadScreen() {
           <View style={styles.emptyState}>
             <Feather name="users" size={48} color={Colors.dark.textDisabled} />
             <ThemedText style={styles.emptyText}>
-              No messages yet. Start the conversation!
+              Henüz mesaj yok. Sohbeti başlatın!
             </ThemedText>
           </View>
         }
@@ -296,7 +407,7 @@ export default function GroupThreadScreen() {
           style={styles.input}
           value={inputText}
           onChangeText={setInputText}
-          placeholder="Type a message..."
+          placeholder="Mesaj yaz..."
           placeholderTextColor={Colors.dark.textDisabled}
           multiline
           maxLength={2000}
@@ -311,7 +422,7 @@ export default function GroupThreadScreen() {
           ]}
         >
           <Feather
-            name="send"
+            name={relayOnline ? "send" : "radio"}
             size={20}
             color={
               inputText.trim()
@@ -344,6 +455,26 @@ const styles = StyleSheet.create({
   },
   headerButtonPressed: {
     backgroundColor: Colors.dark.backgroundSecondary,
+  },
+  p2pBanner: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 10,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    paddingVertical: 4,
+    backgroundColor: Colors.dark.backgroundSecondary,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.dark.success + "40",
+  },
+  p2pBannerText: {
+    fontSize: 11,
+    fontWeight: "600",
+    color: Colors.dark.success,
   },
   messagesList: {
     paddingHorizontal: Spacing.lg,

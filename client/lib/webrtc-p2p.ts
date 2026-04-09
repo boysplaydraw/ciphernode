@@ -55,10 +55,21 @@ export const P2P_FILE_LIMIT =
 /** Tek bir DataChannel chunk boyutu (256 KB) */
 export const P2P_CHUNK_SIZE = 256 * 1024;
 
-/** Dosya boyutuna göre transfer yöntemini belirler */
+/**
+ * Dosya boyutuna göre transfer yöntemini belirler.
+ * @param fileSize Dosya boyutu (byte)
+ * @param relayAvailable Relay sunucusu bağlı mı? (varsayılan: true)
+ *   false gelirse relay devre dışı bırakılır — tüm dosyalar P2P'e yönlendirilir.
+ */
 export function getTransferMethod(
   fileSize: number,
+  relayAvailable = true,
 ): "relay" | "p2p" | "too-large" {
+  // Relay kapalıysa → doğrudan P2P (boyuttan bağımsız)
+  if (!relayAvailable) {
+    if (isWebRTCAvailable() && fileSize <= P2P_FILE_LIMIT) return "p2p";
+    return "too-large";
+  }
   if (fileSize <= RELAY_FILE_LIMIT) return "relay";
   if (fileSize <= P2P_FILE_LIMIT && isWebRTCAvailable()) return "p2p";
   return "too-large";

@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useRef } from "react";
 import { View, StyleSheet, Pressable, Platform, Alert } from "react-native";
 import { useNavigation, CommonActions } from "@react-navigation/native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -20,6 +20,8 @@ export default function QRScannerScreen() {
   const { language } = useLanguage();
   const [permission, requestPermission] = useCameraPermissions();
   const [scanned, setScanned] = useState(false);
+  const [imageScanning, setImageScanning] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const t = {
     loadingCamera:
@@ -70,6 +72,69 @@ export default function QRScannerScreen() {
       language === "tr"
         ? "QR kodu cerceve icine yerlestirin"
         : "Position QR code within the frame",
+    scanFromImage: language === "tr" ? "Resimden Tara" : "Scan from Image",
+    scanFromImageHint:
+      language === "tr"
+        ? "Galeriden veya dosyadan QR kod içeren bir resim seçin"
+        : "Select an image containing a QR code from your gallery or files",
+    noQRFound:
+      language === "tr"
+        ? "QR Bulunamadı"
+        : "No QR Code Found",
+    noQRFoundMsg:
+      language === "tr"
+        ? "Seçilen resimde geçerli bir QR kod bulunamadı. Daha net bir resim deneyin."
+        : "No valid QR code found in the selected image. Try a clearer image.",
+    scanning: language === "tr" ? "Taranıyor..." : "Scanning...",
+  };
+
+  /** Web/Electron: Dosyadan QR kod tara */
+  const handleImageQR = async (file: File) => {
+    setImageScanning(true);
+    try {
+      const jsQR = (await import("jsqr")).default;
+      const img = new Image();
+      const url = URL.createObjectURL(file);
+
+      await new Promise<void>((resolve, reject) => {
+        img.onload = () => resolve();
+        img.onerror = reject;
+        img.src = url;
+      });
+
+      const canvas = document.createElement("canvas");
+      canvas.width = img.width;
+      canvas.height = img.height;
+      const ctx = canvas.getContext("2d")!;
+      ctx.drawImage(img, 0, 0);
+      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      URL.revokeObjectURL(url);
+
+      const result = jsQR(imageData.data, imageData.width, imageData.height);
+      if (result?.data) {
+        await handleBarCodeScanned({ data: result.data });
+      } else {
+        Alert.alert(t.noQRFound, t.noQRFoundMsg);
+      }
+    } catch {
+      Alert.alert(t.error, t.noQRFoundMsg);
+    } finally {
+      setImageScanning(false);
+    }
+  };
+
+  /** Web: Dosya seçiciyi aç */
+  const openImagePicker = () => {
+    if (Platform.OS === "web") {
+      const input = document.createElement("input");
+      input.type = "file";
+      input.accept = "image/*";
+      input.onchange = (e) => {
+        const file = (e.target as HTMLInputElement).files?.[0];
+        if (file) handleImageQR(file);
+      };
+      input.click();
+    }
   };
 
   const handleBarCodeScanned = async ({ data }: { data: string }) => {
@@ -97,10 +162,11 @@ export default function QRScannerScreen() {
 
       await addContact({
         id: parsed.id,
-        publicKey: parsed.publicKey ?? "",
+        publicKey: parsed.pk ?? parsed.publicKey ?? "",
         fingerprint: parsed.id.replace("-", "").padEnd(40, "0"),
         displayName: "",
         addedAt: Date.now(),
+        ...(parsed.npk ? { nostrPubkey: parsed.npk } : {}),
       });
 
       if (Platform.OS !== "web") {
@@ -133,11 +199,24 @@ export default function QRScannerScreen() {
   if (Platform.OS === "web") {
     return (
       <ThemedView style={[styles.container, styles.permissionContainer]}>
-        <Feather name="smartphone" size={64} color={Colors.dark.primary} />
-        <ThemedText style={styles.permissionTitle}>{t.useExpoGo}</ThemedText>
+        <Feather name="image" size={64} color={Colors.dark.primary} />
+        <ThemedText style={styles.permissionTitle}>{t.scanFromImage}</ThemedText>
         <ThemedText style={styles.permissionText}>
-          {t.qrScanningBest}
+          {t.scanFromImageHint}
         </ThemedText>
+        <Pressable
+          onPress={openImagePicker}
+          disabled={imageScanning}
+          style={({ pressed }) => [
+            styles.permissionButton,
+            pressed && styles.permissionButtonPressed,
+            imageScanning && { opacity: 0.6 },
+          ]}
+        >
+          <ThemedText style={styles.permissionButtonText}>
+            {imageScanning ? t.scanning : t.scanFromImage}
+          </ThemedText>
+        </Pressable>
         <Pressable
           onPress={() => navigation.goBack()}
           style={({ pressed }) => [
@@ -270,6 +349,57 @@ export default function QRScannerScreen() {
         </View>
 
         <ThemedText style={styles.hint}>{t.positionQR}</ThemedText>
+
+        {/* Android: Galeriden QR içeren resim seç */}
+        <Pressable
+          onPress={async () => {
+            try {
+              // expo-camera CameraView ile kamera tarama zaten mevcut.
+              // Galeri tarama için expo-camera'nın scanFromURLAsync metodunu kullan.
+              const { Camera } = await import("expo-camera");
+              // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+              // @ts-ignore — expo-image-picker types optional
+              const ImagePicker = await import("expo-image-picker");
+              const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+              if (status !== "granted") return;
+
+              const result = await ImagePicker.launchImageLibraryAsync({
+                mediaTypes: ["images"],
+                quality: 1,
+              });
+              if (result.canceled || !result.assets[0]) return;
+
+              setImageScanning(true);
+              try {
+                // expo-camera'nın yerleşik QR tarama yeteneği
+                const scanned = await (Camera as any).scanFromURLAsync(
+                  result.assets[0].uri,
+                  ["qr"],
+                );
+                if (scanned && scanned.length > 0) {
+                  await handleBarCodeScanned({ data: scanned[0].data });
+                } else {
+                  Alert.alert(t.noQRFound, t.noQRFoundMsg);
+                }
+              } catch {
+                Alert.alert(t.noQRFound, t.noQRFoundMsg);
+              } finally {
+                setImageScanning(false);
+              }
+            } catch {}
+          }}
+          disabled={imageScanning}
+          style={({ pressed }) => [
+            styles.galleryButton,
+            pressed && { opacity: 0.7 },
+            imageScanning && { opacity: 0.5 },
+          ]}
+        >
+          <Feather name="image" size={20} color={Colors.dark.text} />
+          <ThemedText style={styles.galleryButtonText}>
+            {imageScanning ? t.scanning : t.scanFromImage}
+          </ThemedText>
+        </Pressable>
       </View>
     </View>
   );
@@ -418,5 +548,21 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.xl,
     paddingVertical: Spacing.md,
     borderRadius: BorderRadius.sm,
+  },
+  galleryButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Spacing.sm,
+    backgroundColor: "rgba(0,0,0,0.6)",
+    paddingHorizontal: Spacing.xl,
+    paddingVertical: Spacing.md,
+    borderRadius: BorderRadius.sm,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.3)",
+  },
+  galleryButtonText: {
+    fontSize: 15,
+    fontWeight: "600",
+    color: Colors.dark.text,
   },
 });

@@ -11,6 +11,35 @@ let currentTorSettings: TorSettings | null = null;
 let ghostModeEnabled: boolean = false; // Hayalet modu — typing göndermez
 let steganographyEnabled: boolean = false; // Steganografi modu — mesajları cover text'e göm
 let p2pOnlyEnabled: boolean = false; // Sadece P2P — çevrimdışı kuyruklama yapma
+let relayHealthy: boolean = false; // Relay sunucusu sağlıklı mı?
+
+type RelayStatusCallback = (healthy: boolean) => void;
+const relayStatusListeners: RelayStatusCallback[] = [];
+
+/** Relay bağlantı durumunu bildir */
+function setRelayHealth(healthy: boolean): void {
+  if (relayHealthy === healthy) return;
+  relayHealthy = healthy;
+  relayStatusListeners.forEach((cb) => cb(healthy));
+
+  if (!healthy) {
+    // Relay düştü → Nostr sinyallemesini başlat (kimlik varsa)
+    import("./crypto").then(({ getIdentity }) =>
+      getIdentity().then((identity) => {
+        if (identity?.nostrPrivkey && identity?.nostrPubkey) {
+          import("./nostr-signal").then(({ initNostrSignal }) => {
+            initNostrSignal(identity.nostrPrivkey!, identity.nostrPubkey!);
+          });
+        }
+      }),
+    );
+  } else {
+    // Relay bağlandı → Nostr'u kapat (opsiyonel, arka planda açık kalabilir)
+    import("./nostr-signal").then(({ disconnectNostrSignal }) => {
+      disconnectNostrSignal();
+    });
+  }
+}
 
 /** Ghost modu aç/kapat */
 export function setGhostMode(enabled: boolean): void {
@@ -25,6 +54,35 @@ export function setStegMode(enabled: boolean): void {
 /** P2P Only modunu aç/kapat */
 export function setP2POnlyMode(enabled: boolean): void {
   p2pOnlyEnabled = enabled;
+}
+
+/**
+ * Gerçek P2P modunu etkinleştir:
+ * Relay bağlantısını keser, Nostr sinyallemesini başlatır.
+ * Ayarlardan "Sadece P2P" açıldığında çağrılır.
+ */
+export async function activateP2PMode(): Promise<void> {
+  // Relay bağlantısını kes
+  if (socket?.connected) {
+    socket.disconnect();
+  }
+  setRelayHealth(false);
+  // Nostr'u başlat (setRelayHealth(false) zaten tetikler ama kimlik lazım)
+  const { getIdentity } = await import("./crypto");
+  const identity = await getIdentity();
+  if (identity?.nostrPrivkey && identity?.nostrPubkey) {
+    const { initNostrSignal } = await import("./nostr-signal");
+    initNostrSignal(identity.nostrPrivkey, identity.nostrPubkey);
+  }
+}
+
+/**
+ * P2P modundan çık, relay'e yeniden bağlan.
+ */
+export async function deactivateP2PMode(): Promise<void> {
+  if (currentUserId && currentPublicKey) {
+    await initSocket(currentUserId, currentPublicKey);
+  }
 }
 
 type MessageCallback = (msg: {
@@ -188,6 +246,7 @@ export async function initSocket(
       clearTimeout(connectTimeoutId);
       connectTimeoutId = null;
     }
+    setRelayHealth(true);
     const userGroupsList = await getActiveGroups();
     const groupIds = userGroupsList.map((g) => g.id);
     socket?.emit("register", {
@@ -224,10 +283,12 @@ export async function initSocket(
 
   socket.on("disconnect", (reason) => {
     console.warn(`[Socket] Disconnected: ${reason}`);
+    setRelayHealth(false);
     statusListeners.forEach((cb) => cb("disconnected"));
   });
 
   socket.on("connect_error", (err) => {
+    setRelayHealth(false);
     const isTorError =
       torEnabled &&
       (err.message?.includes("ECONNREFUSED") ||
@@ -430,6 +491,20 @@ export function disconnect(): void {
 
 export function isConnected(): boolean {
   return socket?.connected ?? false;
+}
+
+/** Relay sunucusu sağlıklı ve bağlı mı? */
+export function isRelayConnected(): boolean {
+  return relayHealthy;
+}
+
+/** Relay bağlantı durumu değiştiğinde bildirim al */
+export function onRelayStatusChange(callback: RelayStatusCallback): () => void {
+  relayStatusListeners.push(callback);
+  return () => {
+    const idx = relayStatusListeners.indexOf(callback);
+    if (idx > -1) relayStatusListeners.splice(idx, 1);
+  };
 }
 
 export function isTorEnabled(): boolean {

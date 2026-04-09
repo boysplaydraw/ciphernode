@@ -4,7 +4,9 @@ import { Feather } from "@expo/vector-icons";
 import { Colors, Spacing } from "@/constants/theme";
 import { ThemedText } from "./ThemedText";
 import { getTorSettings, type TorSettings } from "@/lib/storage";
-import { onTorStatusChange, onStatusChange, isConnected } from "@/lib/socket";
+import { onTorStatusChange, onStatusChange, isConnected, isRelayConnected, onRelayStatusChange } from "@/lib/socket";
+import { isNostrSignalActive } from "@/lib/nostr-signal";
+import { isWebRTCAvailable } from "@/lib/webrtc-p2p";
 
 type ConnectionState = "p2p" | "relay" | "offline" | "tor" | "tor_connecting";
 
@@ -42,18 +44,30 @@ export default function ConnectionStatus({
       } else if (status === "tor_connecting") {
         setDisplayState("tor_connecting");
       } else if (status === "registered") {
-        // Sunucuya başarıyla kayıt olundu → bağlı
         getTorSettings().then((s) => {
           if (!s.enabled) setDisplayState("relay");
         });
       } else if (status === "disconnected") {
-        setDisplayState("offline");
+        // Relay düştü — Nostr/WebRTC aktifse "p2p" göster, yoksa "offline"
+        const inP2PMode = isNostrSignalActive() && isWebRTCAvailable();
+        setDisplayState(inP2PMode ? "p2p" : "offline");
+      }
+    });
+
+    // Relay durumu doğrudan izle
+    const unsubRelay = onRelayStatusChange((healthy) => {
+      if (!healthy) {
+        setTimeout(() => {
+          const inP2PMode = isNostrSignalActive() && isWebRTCAvailable();
+          setDisplayState(inP2PMode ? "p2p" : "offline");
+        }, 1500); // Nostr'un başlaması için kısa bekleme
       }
     });
 
     return () => {
       unsubTor();
       unsubStatus();
+      unsubRelay();
     };
   }, [updateDisplayState]);
 

@@ -26,6 +26,13 @@ config.resolver.resolveRequest = (context, moduleName, platform) => {
       type: "sourceFile",
     };
   }
+  // react-native-quick-crypto/shim web'de gerekmez — no-op dosyasına yönlendir
+  if (moduleName === "react-native-quick-crypto/shim" && platform === "web") {
+    return {
+      filePath: path.resolve(__dirname, "web-crypto-shim-noop.js"),
+      type: "sourceFile",
+    };
+  }
   return context.resolveRequest(context, moduleName, platform);
 };
 

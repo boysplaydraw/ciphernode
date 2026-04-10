@@ -10,6 +10,9 @@ jobs:
   build:
     runs-on: ubuntu-latest
 
+    permissions:
+      contents: write
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -25,6 +28,9 @@ jobs:
 
       - name: Build Expo web
         run: npx expo export --platform web --output-dir dist
+
+      - name: Build server
+        run: npm run server:bundle
 
       - name: Upload web artifact
         uses: actions/upload-artifact@v4

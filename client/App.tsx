@@ -1,7 +1,3 @@
-// React Native crypto polyfill — NIP-44 ve nostr-tools için (Android/iOS)
-// Electron/Web'de SubtleCrypto zaten var, bu import yalnızca mobilde etkin olur
-import "react-native-quick-crypto/shim";
-
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import {
   StyleSheet,

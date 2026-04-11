@@ -14,6 +14,12 @@ RUN npm install -g esbuild && \
 # ── Runner ────────────────────────────────────────────────────
 FROM node:20-alpine AS runner
 
+LABEL org.opencontainers.image.title="CipherNode"
+LABEL org.opencontainers.image.description="Uçtan uca şifreli, Tor destekli anonim mesajlaşma relay sunucusu"
+LABEL org.opencontainers.image.url="https://boysplaydraw.github.io/ciphernode"
+LABEL org.opencontainers.image.source="https://github.com/boysplaydraw/ciphernode"
+LABEL org.opencontainers.image.licenses="MIT"
+
 # openssl: self-signed SSL sertifikasi uretmek icin
 # certbot: Let's Encrypt destegi (domain varsa)
 RUN apk add --no-cache openssl

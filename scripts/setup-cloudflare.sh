@@ -2,6 +2,9 @@
 # ============================================================
 # CipherNode — Cloudflare Tunnel kurulumu
 # Kullanım: bash scripts/setup-cloudflare.sh
+#
+# GitHub : https://github.com/boysplaydraw/ciphernode
+# Site   : https://boysplaydraw.github.io/ciphernode
 # ============================================================
 # Avantajlar:
 #   - Port forwarding gerekmez

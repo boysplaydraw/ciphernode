@@ -2,6 +2,9 @@
 # ============================================================
 # CipherNode — ngrok tünel kurulumu
 # Kullanım: bash scripts/setup-ngrok.sh [ngrok_token]
+#
+# GitHub : https://github.com/boysplaydraw/ciphernode
+# Site   : https://boysplaydraw.github.io/ciphernode
 # ============================================================
 # ngrok ile sunucuyu herhangi bir ağdan erişilebilir yapar.
 # Ücretsiz planda URL her yeniden başlatmada değişir.

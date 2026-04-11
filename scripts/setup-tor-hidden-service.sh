@@ -2,6 +2,9 @@
 # ============================================================
 # CipherNode — Tor Hidden Service kurulumu
 # Kullanım: bash scripts/setup-tor-hidden-service.sh
+#
+# GitHub : https://github.com/boysplaydraw/ciphernode
+# Site   : https://boysplaydraw.github.io/ciphernode
 # ============================================================
 # Avantajlar:
 #   - Port forwarding gerekmez

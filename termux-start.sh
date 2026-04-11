@@ -3,6 +3,9 @@
 # CipherNode Relay — Termux Başlatma Scripti
 # Kullanım: bash termux-start.sh [mod]
 #   mod: server (varsayılan), tor, ngrok, cloudflare
+#
+# GitHub : https://github.com/boysplaydraw/ciphernode
+# Site   : https://boysplaydraw.github.io/ciphernode
 # ============================================================
 
 set -e

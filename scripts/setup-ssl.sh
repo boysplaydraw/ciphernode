@@ -3,6 +3,9 @@
 # CipherNode — SSL Sertifikası Kurulumu (Let's Encrypt + nginx)
 # Kullanım: sudo bash scripts/setup-ssl.sh <domain> [email]
 # Örnek:    sudo bash scripts/setup-ssl.sh relay.example.com admin@example.com
+#
+# GitHub : https://github.com/boysplaydraw/ciphernode
+# Site   : https://boysplaydraw.github.io/ciphernode
 # ============================================================
 # Gereksinimler:
 #   - VPS veya sunucu (statik IP)

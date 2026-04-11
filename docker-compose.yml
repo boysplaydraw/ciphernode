@@ -3,6 +3,10 @@ services:
     image: mero003/ciphernode:latest
     container_name: ciphernode-relay
     restart: unless-stopped
+    labels:
+      - "org.opencontainers.image.title=CipherNode"
+      - "org.opencontainers.image.source=https://github.com/boysplaydraw/ciphernode"
+      - "org.opencontainers.image.url=https://boysplaydraw.github.io/ciphernode"
 
     ports:
       # HTTPS — ana port (tarayici ve uygulama bu porta baglanir)

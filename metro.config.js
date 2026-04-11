@@ -22,7 +22,7 @@ config.resolver.resolveRequest = (context, moduleName, platform) => {
     return {
       filePath: path.resolve(
         __dirname,
-        "node_modules/react-native-quick-crypto/lib/index.js",
+        "node_modules/react-native-quick-crypto/lib/commonjs/index.js",
       ),
       type: "sourceFile",
     };

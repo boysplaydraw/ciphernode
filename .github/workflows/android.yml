@@ -37,7 +37,10 @@ jobs:
 
       - name: Download APK from EAS
         run: |
-          APK_URL=$(eas build:list --platform android --limit 1 --json --non-interactive | node -e "const d=require('fs').readFileSync('/dev/stdin','utf8'); console.log(JSON.parse(d)[0].artifacts?.buildUrl || '')")
+          RAW=$(eas build:list --platform android --limit 1 --json --non-interactive 2>/dev/null)
+          JSON="${RAW#*[}"
+          JSON="[${JSON}"
+          APK_URL=$(node -e "const b=JSON.parse(process.argv[1]); console.log(b[0].artifacts?.buildUrl||'')" "$JSON" 2>/dev/null || echo "")
           echo "APK_URL=$APK_URL" >> $GITHUB_ENV
           if [ -n "$APK_URL" ]; then
             curl -L "$APK_URL" -o CipherNode.apk

@@ -1,87 +1,105 @@
 #!/bin/sh
 # ============================================================
-# CipherNode Docker Entrypoint
-# - HTTPS=false degilse her zaman SSL ile calisiyor
-# - SSL_DOMAIN yoksa otomatik self-signed sertifika uretir
-# - SSL_DOMAIN varsa Let's Encrypt (certbot) kullanir
+# CipherNode — Docker Entrypoint
+#
+# SSL Modları:
+#   HTTPS=false                  → HTTP (port 5000)
+#   HTTPS=true, SSL_DOMAIN=      → Otomatik self-signed sertifika
+#   HTTPS=true, SSL_DOMAIN=x.com → Let's Encrypt (domain gerekli)
 # ============================================================
 set -e
 
 SSL_DIR=/app/ssl
 mkdir -p "$SSL_DIR"
 
-# ── HTTPS devre disi mi? ─────────────────────────────────────
+# ── Yardımcı: sunucuyu başlat ─────────────────────────────────
+start_server() {
+    exec node server_dist/index.mjs
+}
+
+# ── HTTPS devre dışı mı? ─────────────────────────────────────
 if [ "$HTTPS" = "false" ]; then
-    echo "[entrypoint] HTTPS=false — HTTP modunda baslatiliyor (port $PORT)"
-    exec node server_dist/index.js
+    echo "[CipherNode] HTTP modunda başlatılıyor (port ${PORT:-5000})"
+    start_server
 fi
 
-# ── Sertifika zaten var mi? ──────────────────────────────────
 CERT_FILE="$SSL_DIR/cert.pem"
 KEY_FILE="$SSL_DIR/key.pem"
 
+# ── Mevcut sertifika geçerli mi? ─────────────────────────────
 if [ -f "$CERT_FILE" ] && [ -f "$KEY_FILE" ]; then
-    # Sertifika var — sona erme tarihini kontrol et (30 gundan az kaldiysa yenile)
     EXPIRY=$(openssl x509 -enddate -noout -in "$CERT_FILE" 2>/dev/null | cut -d= -f2)
     if [ -n "$EXPIRY" ]; then
-        EXPIRY_EPOCH=$(date -d "$EXPIRY" +%s 2>/dev/null || date -jf "%b %d %T %Y %Z" "$EXPIRY" +%s 2>/dev/null || echo 0)
+        EXPIRY_EPOCH=$(date -d "$EXPIRY" +%s 2>/dev/null \
+            || date -jf "%b %d %T %Y %Z" "$EXPIRY" +%s 2>/dev/null \
+            || echo 0)
         NOW_EPOCH=$(date +%s)
         DAYS_LEFT=$(( (EXPIRY_EPOCH - NOW_EPOCH) / 86400 ))
         if [ "$DAYS_LEFT" -gt 30 ]; then
-            echo "[SSL] Mevcut sertifika gecerli ($DAYS_LEFT gun kaldi)"
+            echo "[SSL] Mevcut sertifika geçerli (${DAYS_LEFT} gün kaldı)"
             export SSL_CERT="$CERT_FILE"
             export SSL_KEY="$KEY_FILE"
-            exec node server_dist/index.js
+            start_server
         fi
-        echo "[SSL] Sertifika ${DAYS_LEFT} gunde surecek — yenileniyor..."
+        echo "[SSL] Sertifika ${DAYS_LEFT} günde dolacak — yenileniyor..."
     fi
 fi
 
-# ── Let's Encrypt (domain varsa) ────────────────────────────
+# ── Let's Encrypt (yalnızca SSL_DOMAIN ayarlıysa) ─────────────
 if [ -n "$SSL_DOMAIN" ]; then
-    echo "[SSL] Let's Encrypt sertifikasi aliniyor: $SSL_DOMAIN"
+    echo "[SSL] Let's Encrypt sertifikası deneniyor: $SSL_DOMAIN"
+
+    LE_SUCCESS=0
 
     # certbot kurulu mu?
-    if command -v certbot >/dev/null 2>&1; then
+    if ! command -v certbot >/dev/null 2>&1; then
+        echo "[SSL] UYARI: certbot bu image'da yüklü değil."
+        echo "[SSL]   → Let's Encrypt kullanmak için certbot'u manuel kurun"
+        echo "[SSL]   → Şimdilik self-signed sertifika oluşturuluyor..."
+    else
+        # Port 80'in dışarıdan erişilebilir olup olmadığını kontrol et
+        # (localhost'ta çalışıyorsak Let's Encrypt zaten başarısız olur)
         certbot certonly \
             --standalone \
             --non-interactive \
             --agree-tos \
-            --email "${SSL_EMAIL:-admin@$SSL_DOMAIN}" \
+            --email "${SSL_EMAIL:-admin@${SSL_DOMAIN}}" \
             --domain "$SSL_DOMAIN" \
-            --http-01-port 80 \
-            || echo "[SSL] certbot basarisiz — self-signed'a geri doniluyor"
+            --http-01-port "${HTTP_REDIRECT_PORT:-80}" \
+            2>&1 && LE_SUCCESS=1 || {
+                echo "[SSL] UYARI: Let's Encrypt başarısız oldu."
+                echo "[SSL]   Olası nedenler:"
+                echo "[SSL]     1. '$SSL_DOMAIN' bu sunucuya yönlendirilmemiş"
+                echo "[SSL]     2. Port ${HTTP_REDIRECT_PORT:-80} dışarıdan erişilemez"
+                echo "[SSL]     3. Çok fazla deneme — 1 saat bekleyin"
+                echo "[SSL]   → Self-signed sertifika ile devam ediliyor..."
+            }
 
-        LE_CERT="/etc/letsencrypt/live/$SSL_DOMAIN/fullchain.pem"
-        LE_KEY="/etc/letsencrypt/live/$SSL_DOMAIN/privkey.pem"
+        if [ "$LE_SUCCESS" = "1" ]; then
+            LE_CERT="/etc/letsencrypt/live/$SSL_DOMAIN/fullchain.pem"
+            LE_KEY="/etc/letsencrypt/live/$SSL_DOMAIN/privkey.pem"
 
-        if [ -f "$LE_CERT" ] && [ -f "$LE_KEY" ]; then
-            cp "$LE_CERT" "$CERT_FILE"
-            cp "$LE_KEY"  "$KEY_FILE"
-            echo "[SSL] Let's Encrypt sertifikasi kopyalandi"
-            export SSL_CERT="$CERT_FILE"
-            export SSL_KEY="$KEY_FILE"
-            exec node server_dist/index.js
+            if [ -f "$LE_CERT" ] && [ -f "$LE_KEY" ]; then
+                cp "$LE_CERT" "$CERT_FILE"
+                cp "$LE_KEY"  "$KEY_FILE"
+                echo "[SSL] Let's Encrypt sertifikası başarıyla alındı!"
+                export SSL_CERT="$CERT_FILE"
+                export SSL_KEY="$KEY_FILE"
+                start_server
+            fi
         fi
-    else
-        echo "[SSL] certbot yok — self-signed sertifika kullanilacak"
     fi
 fi
 
-# ── Self-signed sertifika uret ───────────────────────────────
-echo "[SSL] Self-signed sertifika olusturuluyor..."
+# ── Self-signed sertifika üret ────────────────────────────────
+echo "[SSL] Self-signed sertifika oluşturuluyor..."
 
-# Sunucu IP'sini bul (SANs icin)
 LOCAL_IP=$(hostname -i 2>/dev/null | awk '{print $1}' || echo "127.0.0.1")
 COMMON_NAME="${SSL_DOMAIN:-$LOCAL_IP}"
 
-# SAN (Subject Alternative Name) listesi: localhost + yerel IP + domain (varsa)
-SAN="IP:127.0.0.1,IP:$LOCAL_IP,DNS:localhost"
-if [ -n "$SSL_DOMAIN" ]; then
-    SAN="$SAN,DNS:$SSL_DOMAIN"
-fi
+SAN="IP:127.0.0.1,IP:${LOCAL_IP},DNS:localhost"
+[ -n "$SSL_DOMAIN" ] && SAN="${SAN},DNS:${SSL_DOMAIN}"
 
-# openssl config (SAN destegi icin)
 OPENSSL_CNF=$(mktemp)
 cat > "$OPENSSL_CNF" << OPENSSL_EOF
 [req]
@@ -111,18 +129,18 @@ openssl req -x509 \
 
 rm -f "$OPENSSL_CNF"
 
-echo "[SSL] Self-signed sertifika olusturuldu"
-echo "[SSL]   CN  : $COMMON_NAME"
-echo "[SSL]   SAN : $SAN"
-echo "[SSL]   Cert: $CERT_FILE"
-echo "[SSL]   Key : $KEY_FILE"
-echo ""
-echo "[SSL] NOT: Tarayici 'Guvenli degil' uyarisi verecektir."
-echo "[SSL]   → 'Gelismis' → 'Guvenli degil (devam et)' secenegiyle kabul edin."
-echo "[SSL]   Bu uyari sadece ilk baglantigta gosterilir."
+echo "[SSL] Self-signed sertifika oluşturuldu"
+echo "[SSL]   Alan Adı : $COMMON_NAME"
+echo "[SSL]   SAN      : $SAN"
+echo "[SSL]"
+echo "[SSL] NOT: Tarayıcı 'Güvenli Değil' uyarısı verecektir."
+echo "[SSL]   Chrome/Edge : Gelişmiş → yine de devam et"
+echo "[SSL]   Firefox     : Riski Kabul Et ve Devam Et"
+echo "[SSL]   Bu uyarı güvensiz bir sunucu değil, sadece doğrulanmamış"
+echo "[SSL]   bir sertifika anlamına gelir. İlk girişten sonra hatırlanır."
 echo ""
 
 export SSL_CERT="$CERT_FILE"
 export SSL_KEY="$KEY_FILE"
 
-exec node server_dist/index.js
+start_server

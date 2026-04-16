@@ -127,34 +127,88 @@ curl http://localhost:5000/api/health
 
 ## SSL Ayarları
 
-### Seçenek A — Self-Signed (Hızlı, Uyarı Verir)
+Üç seçenek var. İhtiyacınıza göre birini seçin:
 
-`.env` dosyasında:
+---
+
+### Seçenek A — Self-Signed (Yerel / Test)
+
+Hiçbir şey yapmanıza gerek yok. `.env` dosyasında `HTTPS=true` yeterliyse sunucu başlangıçta otomatik olarak kendinden imzalı sertifika üretir.
+
 ```env
 HTTPS=true
-# SSL_DOMAIN boş bırakın
+# SSL_DOMAIN satırını boş bırakın
 ```
 
-Sunucu başlarken otomatik olarak `/app/ssl/` dizininde sertifika oluşturur.  
-Tarayıcı "Güvenli değil" uyarısı verecektir → *Gelişmiş → Devam Et* seçeneğiyle kabul edin.
+**Tarayıcı uyarısı:** "Güvenli Değil" diyecektir — bu normaldir.
+- Chrome/Edge → *Gelişmiş* → *yine de devam et*
+- Firefox → *Riski Kabul Et ve Devam Et*
+
+---
 
 ### Seçenek B — Let's Encrypt (Gerçek Domain)
 
+Gerçek bir SSL sertifikası için certbot ayrı bir container olarak çalışır.  
+Relay sunucusu sertifikayı paylaşılan volume üzerinden okur.
+
+**Gereksinimler:**
+- `relay.example.com` DNS'te bu sunucuya yönlendirilmiş olmalı
+- Port 80 internetten erişilebilir olmalı (sertifika doğrulaması için)
+
+**Adım 1 — .env dosyasını düzenle:**
 ```env
 HTTPS=true
 SSL_DOMAIN=relay.example.com
-SSL_EMAIL=admin@example.com
+SSL_EMAIL=admin@relay.example.com
 ```
 
-Gereksinim: `relay.example.com` sunucunuza yönlendirilmiş olmalı ve 80/443 portları açık olmalı.
+**Adım 2 — Sertifika al (ilk kurulumda bir kez):**
+```bash
+# Relay durdurulmuşsa veya henüz çalışmıyorsa (port 80 boş olmalı):
+docker compose --profile ssl run --rm certbot
+```
 
-### Seçenek C — HTTP (Reverse Proxy Arkasında)
+Başarılı çıktı:
+```
+Successfully received certificate.
+Certificate is saved at: /etc/letsencrypt/live/relay.example.com/fullchain.pem
+Key is saved at:         /etc/letsencrypt/live/relay.example.com/privkey.pem
+```
 
-Nginx / Traefik gibi bir proxy SSL'i hallettiyse:
+**Adım 3 — Sunucuyu başlat:**
+```bash
+docker compose up -d
+```
+
+Sunucu `/etc/letsencrypt/live/relay.example.com/` konumunu otomatik okur.
+
+**Sertifika yenileme (her ~60 günde bir):**
+```bash
+# Relay'i geçici durdur (port 80 için)
+docker compose stop ciphernode-relay
+
+# Certbot yenile
+docker compose --profile ssl run --rm certbot
+
+# Relay'i yeniden başlat
+docker compose start ciphernode-relay
+```
+
+> **Not:** Let's Encrypt sertifikaları 90 gün geçerlidir.  
+> Tarayıcınızda `NET::ERR_CERT_DATE_INVALID` hatası alırsanız yenileme zamanı gelmiş demektir.
+
+---
+
+### Seçenek C — HTTP (Nginx / Traefik Arkasında)
+
+Sunucunuzda zaten bir reverse proxy SSL'i yönetiyorsa:
+
 ```env
 HTTPS=false
 PORT=5000
 ```
+
+Nginx yapılandırması için [aşağıya bakın](#nginx-ile-reverse-proxy-opsiyonel).
 
 ---
 

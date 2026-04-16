@@ -4,9 +4,15 @@
 # ║  Servisler:                                                  ║
 # ║    db              → PostgreSQL 16 veritabanı                ║
 # ║    ciphernode-relay → CipherNode relay sunucusu              ║
+# ║    certbot         → Let's Encrypt (yalnızca --profile ssl)  ║
 # ║                                                              ║
-# ║  Hızlı başlangıç:                                           ║
-# ║    cp .env.example .env    (DATABASE_URL'i düzenle)          ║
+# ║  Hızlı başlangıç (HTTP mod):                                 ║
+# ║    cp .env.example .env && docker compose up -d              ║
+# ║                                                              ║
+# ║  Let's Encrypt ile (domain gerekli):                         ║
+# ║    SSL_DOMAIN=relay.example.com \                            ║
+# ║    SSL_EMAIL=admin@example.com \                             ║
+# ║    docker compose --profile ssl run --rm certbot             ║
 # ║    docker compose up -d                                      ║
 # ╚══════════════════════════════════════════════════════════════╝
 
@@ -21,11 +27,9 @@ services:
     environment:
       POSTGRES_DB:       ciphernode
       POSTGRES_USER:     ciphernode
-      # Şifreyi .env dosyasında DB_PASSWORD olarak ayarlayın
       POSTGRES_PASSWORD: ${DB_PASSWORD:-ciphernode_secret}
 
     volumes:
-      # Veritabanı verileri container silinse bile korunur
       - ciphernode-db:/var/lib/postgresql/data
 
     networks:
@@ -37,9 +41,6 @@ services:
       timeout: 5s
       retries: 5
       start_period: 10s
-
-    # Güvenlik: dışarıya port açma (sadece iç network üzerinden erişilir)
-    # Yerel erişim gerekirse: ports: ["5432:5432"]
 
     logging:
       driver: "json-file"
@@ -53,13 +54,12 @@ services:
     container_name: ciphernode-relay
     restart: unless-stopped
 
-    # Veritabanı hazır olmadan başlamaz
     depends_on:
       db:
         condition: service_healthy
 
     ports:
-      - "${SSL_PORT:-443}:443"          # HTTPS (tarayıcı ve uygulama)
+      - "${SSL_PORT:-443}:443"          # HTTPS
       - "${HTTP_REDIRECT_PORT:-80}:80"  # HTTP → HTTPS yönlendirme
       - "${PORT:-5000}:5000"            # HTTP doğrudan erişim
 
@@ -72,32 +72,32 @@ services:
       PORT:       ${PORT:-5000}
       HOST:       0.0.0.0
 
-      # Veritabanı — db servisiyle otomatik bağlantı
       DATABASE_URL: postgresql://ciphernode:${DB_PASSWORD:-ciphernode_secret}@db:5432/ciphernode
 
-      # SSL / HTTPS ayarları
-      # HTTPS=false          → HTTP modunda çalış (sadece port 5000)
-      # SSL_DOMAIN=           → Boş bırakınca otomatik self-signed sertifika
-      # SSL_DOMAIN=relay.com  → Let's Encrypt sertifikası kullanılır
+      # SSL / HTTPS
+      # HTTPS=false          → HTTP modu (port 5000)
+      # SSL_DOMAIN=           → self-signed sertifika otomatik üretilir
+      # SSL_DOMAIN=relay.com  → certbot ile önceden alınan Let's Encrypt kullanılır
       HTTPS:              ${HTTPS:-true}
       SSL_DOMAIN:         ${SSL_DOMAIN:-}
       SSL_EMAIL:          ${SSL_EMAIL:-}
       SSL_PORT:           ${SSL_PORT:-443}
       HTTP_REDIRECT_PORT: ${HTTP_REDIRECT_PORT:-80}
 
-      # Mesaj & dosya ayarları
-      MESSAGE_TTL_MS:      ${MESSAGE_TTL_MS:-86400000}     # 24 saat
-      FILE_TTL_MS:         ${FILE_TTL_MS:-86400000}        # 24 saat
-      MAX_FILE_SIZE_MB:    ${MAX_FILE_SIZE_MB:-100}
-      MAX_FILE_DOWNLOADS:  ${MAX_FILE_DOWNLOADS:-10}
+      MESSAGE_TTL_MS:     ${MESSAGE_TTL_MS:-86400000}
+      FILE_TTL_MS:        ${FILE_TTL_MS:-86400000}
+      MAX_FILE_SIZE_MB:   ${MAX_FILE_SIZE_MB:-100}
+      MAX_FILE_DOWNLOADS: ${MAX_FILE_DOWNLOADS:-10}
 
-      # Tor (opsiyonel)
-      TOR_ENABLED:    ${TOR_ENABLED:-false}
-      ONION_ADDRESS:  ${ONION_ADDRESS:-}
+      TOR_ENABLED:   ${TOR_ENABLED:-false}
+      ONION_ADDRESS: ${ONION_ADDRESS:-}
 
     volumes:
-      # SSL sertifikaları container yeniden başlatılınca korunur
+      # Self-signed sertifikalar burada saklanır
       - ciphernode-ssl:/app/ssl
+      # Let's Encrypt sertifikaları — certbot container ile paylaşılır
+      # (SSL_DOMAIN ayarlıysa sunucu buradan otomatik okur)
+      - ciphernode-letsencrypt:/etc/letsencrypt:ro
 
     networks:
       - ciphernode-network
@@ -141,6 +141,45 @@ services:
       - "org.opencontainers.image.title=CipherNode"
       - "org.opencontainers.image.source=https://github.com/boysplaydraw/ciphernode"
 
+  # ── Let's Encrypt (Certbot) ────────────────────────────────────
+  # Yalnızca --profile ssl ile çalışır, normal başlatmada devreye GİRMEZ.
+  #
+  # İlk kurulum:
+  #   SSL_DOMAIN=relay.example.com SSL_EMAIL=admin@example.com \
+  #   docker compose --profile ssl run --rm certbot
+  #
+  # Sertifika yenileme (her ~60 günde bir):
+  #   docker compose --profile ssl run --rm certbot
+  #   docker compose restart ciphernode-relay
+  certbot:
+    image: certbot/certbot:latest
+    container_name: ciphernode-certbot
+    profiles: ["ssl"]
+
+    # Sertifikaları relay servisiyle paylaşılan volume'a yazar
+    volumes:
+      - ciphernode-letsencrypt:/etc/letsencrypt
+
+    # Port 80 standalone modda gerekiyor — Let's Encrypt bu porttan doğrular
+    # (Relay servisi henüz çalışmıyorsa veya durdurulduysa kullanılabilir)
+    network_mode: host
+
+    environment:
+      SSL_DOMAIN: ${SSL_DOMAIN}
+      SSL_EMAIL:  ${SSL_EMAIL:-admin@${SSL_DOMAIN:-example.com}}
+
+    # certonly: sertifika al (--standalone: kendi HTTP sunucusunu kullanır)
+    # --keep-until-expiring: sertifika geçerliyse yeniden almaz
+    command: >
+      certonly
+      --standalone
+      --non-interactive
+      --agree-tos
+      --keep-until-expiring
+      --email $${SSL_EMAIL:-admin@$${SSL_DOMAIN}}
+      --domain $${SSL_DOMAIN}
+      --http-01-port 80
+
 # ── Volume'lar ─────────────────────────────────────────────────
 volumes:
   ciphernode-db:
@@ -151,7 +190,12 @@ volumes:
   ciphernode-ssl:
     driver: local
     labels:
-      description: "CipherNode SSL sertifikaları"
+      description: "CipherNode self-signed SSL sertifikaları"
+
+  ciphernode-letsencrypt:
+    driver: local
+    labels:
+      description: "CipherNode Let's Encrypt sertifikaları (certbot ile paylaşılan)"
 
 # ── Network ───────────────────────────────────────────────────
 networks:

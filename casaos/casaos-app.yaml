@@ -1,54 +1,152 @@
-name: CipherNode Relay
-version: "3.8"
+name: CipherNode
 
 # ============================================================
-# CipherNode için CasaOS Uygulama Manifestosu
-# Kurulum: CasaOS → App Store → Custom Install → Bu dosyayı yapıştır
+# CipherNode — CasaOS Uygulama Manifestosu
+#
+# Kurulum:
+#   CasaOS → App Store → Custom Install → Bu dosyayı yapıştır
+#
+# İçerir:
+#   - CipherNode relay sunucusu (mero003/ciphernode:latest)
+#   - PostgreSQL 16 veritabanı
+#
+# Kurulum sonrası CasaOS panelinde "CipherNode" simgesine
+# tıklayarak web arayüzüne ulaşabilirsiniz.
 # ============================================================
 
 services:
+
+  # ── CipherNode Relay Sunucusu ────────────────────────────────
   ciphernode:
-    image: node:20-alpine
+    image: mero003/ciphernode:latest
     container_name: ciphernode-relay
     restart: unless-stopped
-    working_dir: /app
-    command: >
-      sh -c "
-        apk add --no-cache git &&
-        git clone https://github.com/merorasto/ciphernode /app 2>/dev/null || (cd /app && git pull) &&
-        npm ci --omit=dev &&
-        npm run server:build &&
-        node server_dist/index.js
-      "
+
+    depends_on:
+      db:
+        condition: service_healthy
+
     ports:
-      - "5000:5000"
+      - "5000:5000"     # HTTP / web arayüzü (CasaOS bu portu kullanır)
+      - "5443:443"      # HTTPS (opsiyonel, SSL etkinse)
+
     environment:
-      - NODE_ENV=production
-      - PORT=5000
-      - HOST=0.0.0.0
+      NODE_ENV:    production
+      PORT:        5000
+      HOST:        0.0.0.0
+
+      # Veritabanı — db servisiyle otomatik bağlantı
+      DATABASE_URL: postgresql://ciphernode:${DB_PASSWORD:-ciphernode_secret}@db:5432/ciphernode
+
+      # SSL: false = HTTP modu (CasaOS için önerilen)
+      # SSL sertifikası için DOCKER.md → SSL Ayarları bölümüne bakın
+      HTTPS: "false"
+
+      # Mesaj & dosya ayarları
+      MESSAGE_TTL_MS:    86400000   # 24 saat
+      FILE_TTL_MS:       86400000   # 24 saat
+      MAX_FILE_SIZE_MB:  100
+      MAX_FILE_DOWNLOADS: 10
+
     volumes:
-      - /DATA/AppData/ciphernode:/app/data
+      - /DATA/AppData/ciphernode/ssl:/app/ssl
+
     healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://localhost:5000/api/health"]
+      test:
+        - "CMD-SHELL"
+        - "wget --no-verbose --tries=1 --spider http://localhost:5000/api/health || exit 1"
       interval: 30s
       timeout: 10s
       retries: 3
+      start_period: 20s
+
+    networks:
+      - ciphernode-network
+
     x-casaos:
       envs:
         - container: PORT
           description:
-            en_us: Server port (default 5000)
-        - container: HOST
+            en_us: "Server HTTP port (default: 5000)"
+            tr_tr: "Sunucu HTTP portu (varsayılan: 5000)"
+        - container: HTTPS
           description:
-            en_us: Bind address (0.0.0.0 for all interfaces)
+            en_us: "Enable HTTPS (true/false). Requires SSL certificate."
+            tr_tr: "HTTPS etkinleştir (true/false). SSL sertifikası gerekir."
+        - container: DATABASE_URL
+          description:
+            en_us: "PostgreSQL connection string. Auto-configured for local db service."
+            tr_tr: "PostgreSQL bağlantı adresi. Yerel db servisi için otomatik ayarlanır."
+        - container: MESSAGE_TTL_MS
+          description:
+            en_us: "Message lifetime in milliseconds (86400000 = 24 hours)"
+            tr_tr: "Mesaj ömrü (milisaniye). 86400000 = 24 saat"
+        - container: FILE_TTL_MS
+          description:
+            en_us: "File lifetime in milliseconds (86400000 = 24 hours)"
+            tr_tr: "Dosya ömrü (milisaniye). 86400000 = 24 saat"
+        - container: MAX_FILE_SIZE_MB
+          description:
+            en_us: "Maximum upload file size in MB"
+            tr_tr: "Maksimum yükleme boyutu (MB)"
+        - container: TOR_ENABLED
+          description:
+            en_us: "Enable Tor hidden service (true/false)"
+            tr_tr: "Tor gizli servisi etkinleştir (true/false)"
       ports:
         - container: "5000"
           description:
-            en_us: CipherNode Relay HTTP port
-      volumes:
-        - container: /app/data
+            en_us: "CipherNode web interface & relay server (HTTP)"
+            tr_tr: "CipherNode web arayüzü & relay sunucusu (HTTP)"
+        - container: "443"
           description:
-            en_us: Application data directory
+            en_us: "HTTPS port (only if HTTPS=true)"
+            tr_tr: "HTTPS portu (yalnızca HTTPS=true ise)"
+      volumes:
+        - container: /app/ssl
+          description:
+            en_us: "SSL certificate storage"
+            tr_tr: "SSL sertifika dizini"
+
+  # ── PostgreSQL Veritabanı ────────────────────────────────────
+  db:
+    image: postgres:16-alpine
+    container_name: ciphernode-db
+    restart: unless-stopped
+
+    environment:
+      POSTGRES_DB:       ciphernode
+      POSTGRES_USER:     ciphernode
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-ciphernode_secret}
+
+    volumes:
+      - /DATA/AppData/ciphernode/db:/var/lib/postgresql/data
+
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ciphernode -d ciphernode"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+    networks:
+      - ciphernode-network
+
+    x-casaos:
+      envs:
+        - container: POSTGRES_PASSWORD
+          description:
+            en_us: "Database password (must match DB_PASSWORD)"
+            tr_tr: "Veritabanı şifresi (DB_PASSWORD ile aynı olmalı)"
+      volumes:
+        - container: /var/lib/postgresql/data
+          description:
+            en_us: "PostgreSQL data directory"
+            tr_tr: "PostgreSQL veri dizini"
+
+networks:
+  ciphernode-network:
+    driver: bridge
 
 x-casaos:
   architectures:
@@ -60,25 +158,43 @@ x-casaos:
   category: Social
   description:
     en_us: |
-      End-to-end encrypted, anonymous messaging relay server.
-      Supports Tor (.onion), P2P mode, file sharing, and anonymous matching.
-      No logs, no tracking, complete control.
+      CipherNode is an end-to-end encrypted, anonymous messaging relay server.
+
+      Features:
+      • OpenPGP RSA-4096 end-to-end encryption
+      • Anonymous messaging (no registration required)
+      • Tor hidden service (.onion) support
+      • Encrypted file sharing (up to 100MB)
+      • Web interface accessible from CasaOS dashboard
+      • Zero logs, zero tracking
+
+      The CipherNode mobile app (Android/iOS) connects to this relay server.
+      After installation, open the web interface and copy your server URL
+      to configure the mobile app.
     tr_tr: |
-      Uçtan uca şifreli, anonim mesajlaşma relay sunucusu.
-      Tor (.onion), P2P modu, dosya paylaşımı ve anonim eşleştirme desteği.
-      Kayıt yok, izleme yok, tam kontrol.
+      CipherNode, uçtan uca şifreli anonim mesajlaşma relay sunucusudur.
+
+      Özellikler:
+      • OpenPGP RSA-4096 uçtan uca şifreleme
+      • Anonim mesajlaşma (kayıt gerekmez)
+      • Tor gizli servisi (.onion) desteği
+      • Şifreli dosya paylaşımı (100MB'a kadar)
+      • CasaOS panelinden erişilebilen web arayüzü
+      • Sıfır kayıt, sıfır izleme
+
+      CipherNode mobil uygulaması (Android/iOS) bu relay sunucusuna bağlanır.
+      Kurulum sonrası web arayüzünü açın ve sunucu URL'nizi mobil uygulamaya girin.
   developer: CipherNode
   hostname: ""
-  icon: https://raw.githubusercontent.com/merorasto/ciphernode/main/assets/icon.png
+  icon: https://raw.githubusercontent.com/boysplaydraw/ciphernode/master/assets/icon.png
   index: /
   is_uncontrolled: false
   port_map: "5000"
   scheme: http
   store_app_id: ciphernode-relay
   tagline:
-    en_us: Censorship-resistant encrypted messaging
-    tr_tr: Sansüre dayanıklı şifreli mesajlaşma
-  thumbnail: ""
+    en_us: Privacy-first encrypted messaging relay
+    tr_tr: Gizlilik odaklı şifreli mesajlaşma röle
   title:
-    en_us: CipherNode Relay
-    tr_tr: CipherNode Röle
+    en_us: CipherNode
+    tr_tr: CipherNode

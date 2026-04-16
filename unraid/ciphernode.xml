@@ -1,39 +1,114 @@
 <?xml version="1.0"?>
 <!--
   CipherNode — Unraid Community Applications Template
-  Kurulum: Unraid → Apps → Import Template → Bu XML'i yapıştır
-  veya: /boot/config/plugins/dockerMan/templates-user/ klasörüne kopyala
+
+  Kurulum:
+    Unraid → Apps → Import Template → Bu XML'i yapıştır
+  veya:
+    /boot/config/plugins/dockerMan/templates-user/ klasörüne kopyala
+    ardından Unraid → Docker → Add Container → Template seç
+
+  NOT: Bu template relay sunucusunu kurar.
+  PostgreSQL için ayrıca bir Postgres container kurmanız gerekir.
+  DATABASE_URL'yi kendi PostgreSQL adresinizle güncelleyin.
 -->
 <Container version="2">
-  <Name>CipherNode-Relay</Name>
-  <Repository>node:20-alpine</Repository>
-  <Registry>https://hub.docker.com/_/node</Registry>
+  <Name>CipherNode</Name>
+  <Repository>mero003/ciphernode:latest</Repository>
+  <Registry>https://hub.docker.com/r/mero003/ciphernode</Registry>
   <Network>bridge</Network>
   <MyIP/>
   <Shell>sh</Shell>
   <Privileged>false</Privileged>
-  <Support>https://github.com/YOUR_USER/ciphernode</Support>
-  <Project>https://github.com/YOUR_USER/ciphernode</Project>
+  <Support>https://github.com/boysplaydraw/ciphernode/issues</Support>
+  <Project>https://github.com/boysplaydraw/ciphernode</Project>
   <Overview>
-    End-to-end encrypted anonymous messaging relay server.
-    OpenPGP RSA-4096 encryption, Tor support, P2P mode, file sharing.
-    No logs, no tracking, complete control.
+    CipherNode — End-to-end encrypted, anonymous messaging relay server.
     &#xD;&#xA;
-    Setup: After first start, build will run automatically.
-    Access via: http://[IP]:5000
+    Features:
+    - OpenPGP RSA-4096 end-to-end encryption
+    - Anonymous messaging (no registration)
+    - Tor hidden service (.onion) support
+    - Encrypted file sharing (up to 100MB)
+    - Zero logs, zero tracking
+    &#xD;&#xA;
+    Setup:
+    1. Install a PostgreSQL container (e.g. from Community Apps)
+    2. Set DATABASE_URL to your PostgreSQL connection string
+    3. Start the container and access via http://[IP]:5000
+    &#xD;&#xA;
+    The CipherNode mobile app (Android/iOS) connects to this relay.
+    After starting, copy your server URL into the mobile app settings.
   </Overview>
   <Category>Network:Messenger</Category>
   <WebUI>http://[IP]:[PORT:5000]/</WebUI>
-  <TemplateURL>https://raw.githubusercontent.com/YOUR_USER/ciphernode/main/unraid/ciphernode.xml</TemplateURL>
-  <Icon>https://raw.githubusercontent.com/YOUR_USER/ciphernode/main/assets/icon.png</Icon>
+  <TemplateURL>https://raw.githubusercontent.com/boysplaydraw/ciphernode/master/unraid/ciphernode.xml</TemplateURL>
+  <Icon>https://raw.githubusercontent.com/boysplaydraw/ciphernode/master/assets/icon.png</Icon>
+  <ExtraParams>--restart=unless-stopped</ExtraParams>
   <PostArgs/>
   <CPUset/>
   <DateInstalled/>
   <DonateText/>
   <DonateLink/>
-  <Requires/>
-  <Config Name="WebUI Port" Target="5000" Default="5000" Mode="tcp" Description="CipherNode relay server HTTP port" Type="Port" Display="always" Required="true" Mask="false">5000</Config>
-  <Config Name="Node Environment" Target="NODE_ENV" Default="production" Mode="" Description="production or development" Type="Variable" Display="always" Required="true" Mask="false">production</Config>
-  <Config Name="Host Bind" Target="HOST" Default="0.0.0.0" Mode="" Description="Bind address - keep 0.0.0.0 for all interfaces" Type="Variable" Display="advanced" Required="false" Mask="false">0.0.0.0</Config>
-  <Config Name="App Data" Target="/app" Default="/mnt/user/appdata/ciphernode" Mode="rw" Description="Application directory" Type="Path" Display="advanced" Required="true" Mask="false">/mnt/user/appdata/ciphernode</Config>
+
+  <!-- Portlar -->
+  <Config Name="Web UI Port" Target="5000" Default="5000" Mode="tcp"
+    Description="CipherNode web interface and relay server (HTTP)"
+    Type="Port" Display="always" Required="true" Mask="false">5000</Config>
+
+  <Config Name="HTTPS Port" Target="443" Default="5443" Mode="tcp"
+    Description="HTTPS port (only needed if HTTPS=true)"
+    Type="Port" Display="advanced" Required="false" Mask="false">5443</Config>
+
+  <!-- Ortam değişkenleri -->
+  <Config Name="Database URL" Target="DATABASE_URL"
+    Default="postgresql://ciphernode:password@[POSTGRES_IP]:5432/ciphernode"
+    Mode="" Description="PostgreSQL connection string. Replace [POSTGRES_IP] with your Postgres container IP."
+    Type="Variable" Display="always" Required="true" Mask="false">postgresql://ciphernode:password@[POSTGRES_IP]:5432/ciphernode</Config>
+
+  <Config Name="HTTPS Mode" Target="HTTPS"
+    Default="false" Mode=""
+    Description="Enable HTTPS (true/false). Set to true only if you have an SSL certificate."
+    Type="Variable" Display="always" Required="false" Mask="false">false</Config>
+
+  <Config Name="SSL Domain" Target="SSL_DOMAIN"
+    Default="" Mode=""
+    Description="Your domain name for Let's Encrypt (e.g. relay.example.com). Leave empty for self-signed."
+    Type="Variable" Display="advanced" Required="false" Mask="false"></Config>
+
+  <Config Name="SSL Email" Target="SSL_EMAIL"
+    Default="" Mode=""
+    Description="Email address for Let's Encrypt notifications."
+    Type="Variable" Display="advanced" Required="false" Mask="false"></Config>
+
+  <Config Name="Message Lifetime" Target="MESSAGE_TTL_MS"
+    Default="86400000" Mode=""
+    Description="Message lifetime in milliseconds. 86400000 = 24 hours."
+    Type="Variable" Display="advanced" Required="false" Mask="false">86400000</Config>
+
+  <Config Name="File Lifetime" Target="FILE_TTL_MS"
+    Default="86400000" Mode=""
+    Description="Shared file lifetime in milliseconds. 86400000 = 24 hours."
+    Type="Variable" Display="advanced" Required="false" Mask="false">86400000</Config>
+
+  <Config Name="Max File Size (MB)" Target="MAX_FILE_SIZE_MB"
+    Default="100" Mode=""
+    Description="Maximum file upload size in megabytes."
+    Type="Variable" Display="advanced" Required="false" Mask="false">100</Config>
+
+  <Config Name="Tor Support" Target="TOR_ENABLED"
+    Default="false" Mode=""
+    Description="Enable Tor hidden service (true/false)."
+    Type="Variable" Display="advanced" Required="false" Mask="false">false</Config>
+
+  <Config Name="Node Environment" Target="NODE_ENV"
+    Default="production" Mode=""
+    Description="Node.js environment (keep as production)."
+    Type="Variable" Display="advanced" Required="false" Mask="false">production</Config>
+
+  <!-- Volume'lar -->
+  <Config Name="SSL Certificates" Target="/app/ssl"
+    Default="/mnt/user/appdata/ciphernode/ssl" Mode="rw"
+    Description="SSL certificate storage directory."
+    Type="Path" Display="advanced" Required="false" Mask="false">/mnt/user/appdata/ciphernode/ssl</Config>
 </Container>

@@ -1,0 +1,60 @@
+# ── Bağımlılıklar ─────────────────────────────────────────────
+node_modules
+npm-debug.log*
+yarn-error.log
+
+# ── Build çıktıları ────────────────────────────────────────────
+dist
+dist-electron
+server_dist
+
+# ── Ortam dosyaları (güvenlik) ─────────────────────────────────
+.env
+.env.local
+.env.*.local
+# .env.example dahil et (dokümantasyon amaçlı)
+
+# ── Git ────────────────────────────────────────────────────────
+.git
+.gitignore
+.gitattributes
+
+# ── Geliştirme araçları ────────────────────────────────────────
+.vscode
+.idea
+*.code-workspace
+
+# ── Mobil / Electron (sunucu image'ında gerekmez) ──────────────
+client
+electron
+android
+ios
+assets
+attached_assets
+
+# ── Web & Pazarlama ────────────────────────────────────────────
+# website/ dahil et — sunucu bunu serve ediyor
+
+# ── Platform kurulum scriptleri ───────────────────────────────
+casaos
+unraid
+scripts
+tor-bin
+termux-start.sh
+nginx
+
+# ── Test & Kalite ──────────────────────────────────────────────
+*.test.ts
+*.spec.ts
+*.test.js
+
+# ── Dokümantasyon ──────────────────────────────────────────────
+*.md
+LICENSE
+design_guidelines.md
+replit.md
+
+# ── Diğer ─────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+*.log

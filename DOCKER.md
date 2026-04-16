@@ -1,33 +1,29 @@
-# CipherNode Docker Kurulum Rehberi
+# CipherNode — Docker Kurulum Rehberi
 
-Bu rehber, CipherNode relay sunucusunu Docker ile nasıl kuracaginizi ve yapilandiracaginizi adim adim aciklar.
+Bu rehber CipherNode relay sunucusunu Docker ile kurmayı anlatır.  
+**3 yöntem var** — ihtiyacınıza göre birini seçin:
 
-## Icindekiler
-
-1. [Gereksinimler](#gereksinimler)
-2. [Hizli Baslangic](#hizli-baslangic)
-3. [Resmi Sunucu Kurulumu](#resmi-sunucu-kurulumu)
-4. [Ozel Sunucu Kurulumu](#ozel-sunucu-kurulumu)
-5. [Yapilandirma Secenekleri](#yapilandirma-secenekleri)
-6. [Guvenlik Onerileri](#guvenlik-onerileri)
-7. [Sorun Giderme](#sorun-giderme)
+| Yöntem | Açıklama | Zorluk |
+|--------|----------|--------|
+| [Yöntem 1 — Hızlı Başlangıç](#yöntem-1--hızlı-başlangıç) | Tek komutla çalıştır (PostgreSQL dahil) | Kolay |
+| [Yöntem 2 — Özelleştirmeli Kurulum](#yöntem-2--özelleştirmeli-kurulum) | .env ile yapılandır, SSL ayarla | Orta |
+| [Yöntem 3 — Kaynak Koddan Derle](#yöntem-3--kaynak-koddan-derle) | Kendi image'ını oluştur | İleri |
 
 ---
 
 ## Gereksinimler
 
-- Docker 20.10 veya ustu
-- Docker Compose 2.0 veya ustu
-- Minimum 256MB RAM
-- 1 CPU core
+- **Docker 24+** ve **Docker Compose v2+**
+- Minimum 256 MB RAM, 1 CPU
+- 443 ve 80 portları açık (HTTPS kullanıyorsanız)
 
 ### Docker Kurulumu
 
-**Ubuntu/Debian:**
+**Ubuntu / Debian / Raspberry Pi:**
 ```bash
-curl -fsSL https://get.docker.com -o get-docker.sh
-sudo sh get-docker.sh
+curl -fsSL https://get.docker.com | sh
 sudo usermod -aG docker $USER
+# Oturumu kapatıp açın (grup değişikliği için)
 ```
 
 **macOS:**
@@ -35,315 +31,334 @@ sudo usermod -aG docker $USER
 brew install --cask docker
 ```
 
----
-
-## Hizli Baslangic
-
-En hizli yontem Docker Compose kullanmaktir:
-
-```bash
-# Depoyu klonlayin
-git clone https://github.com/ciphernode/ciphernode.git
-cd ciphernode
-
-# Sunucuyu baslatin
-docker compose up -d
-
-# Logları izleyin
-docker compose logs -f
-```
-
-Sunucu artik `http://localhost:5000` adresinde calisir.
+**Windows:**  
+[Docker Desktop](https://www.docker.com/products/docker-desktop/) indirip kurun.
 
 ---
 
-## Resmi Sunucu Kurulumu
+## Yöntem 1 — Hızlı Başlangıç
 
-Resmi CipherNode relay sunucusu, sifir kayit politikasi (no-log) ile calisir.
+En hızlı yol. PostgreSQL dahil, tek komutla her şey ayağa kalkar.
 
-### Tek Komutla Kurulum
+### Adım 1: docker-compose.yml İndir
 
 ```bash
-docker run -d \
-  --name ciphernode-relay \
-  --restart unless-stopped \
-  -p 5000:5000 \
-  -e NODE_ENV=production \
-  -e MESSAGE_TTL_MS=300000 \
-  ghcr.io/ciphernode/relay:latest
+curl -O https://raw.githubusercontent.com/boysplaydraw/ciphernode/master/docker-compose.yml
+curl -O https://raw.githubusercontent.com/boysplaydraw/ciphernode/master/.env.example
 ```
 
-### Docker Compose ile Kurulum
+### Adım 2: Başlat
 
-`docker-compose.yml` dosyasi olusturun:
-
-```yaml
-version: '3.8'
-
-services:
-  ciphernode-relay:
-    image: ghcr.io/ciphernode/relay:latest
-    container_name: ciphernode-relay
-    restart: unless-stopped
-    ports:
-      - "5000:5000"
-    environment:
-      - NODE_ENV=production
-      - PORT=5000
-      - MESSAGE_TTL_MS=300000
-      - CLEANUP_INTERVAL_MS=60000
-    healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://localhost:5000/api/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-    deploy:
-      resources:
-        limits:
-          memory: 256M
-          cpus: '0.5'
-    security_opt:
-      - no-new-privileges:true
-    read_only: true
-    tmpfs:
-      - /tmp:size=64M,mode=1777
-```
-
-Baslatin:
 ```bash
 docker compose up -d
 ```
 
----
-
-## Ozel Sunucu Kurulumu
-
-Kendi relay sunucunuzu kaynak koddan derleyerek kurabilirsiniz.
-
-### Adim 1: Kaynak Kodu Indirin
+### Adım 3: Çalıştığını Doğrula
 
 ```bash
-git clone https://github.com/ciphernode/ciphernode.git
-cd ciphernode
-```
-
-### Adim 2: Docker Image Olusturun
-
-```bash
-docker build -t ciphernode-relay:custom .
-```
-
-### Adim 3: Container Baslatin
-
-```bash
-docker run -d \
-  --name my-ciphernode-relay \
-  --restart unless-stopped \
-  -p 5000:5000 \
-  -e NODE_ENV=production \
-  -e MESSAGE_TTL_MS=600000 \
-  ciphernode-relay:custom
-```
-
-### Adim 4: Dogrulama
-
-```bash
-# Sunucu durumunu kontrol edin
+# Sağlık kontrolü
 curl http://localhost:5000/api/health
+# Beklenen: {"status":"ok","timestamp":...}
 
-# Loglari goruntuleyin
-docker logs -f my-ciphernode-relay
+# Logları izle
+docker compose logs -f ciphernode-relay
+```
+
+Sunucu `http://localhost:5000` adresinde çalışıyor.
+
+> **Not:** İlk başlatmada Docker Hub'dan image indirilir (~1-2 dakika).
+
+---
+
+## Yöntem 2 — Özelleştirmeli Kurulum
+
+Kendi veritabanınızı kullanmak, SSL açmak veya ayarları değiştirmek için.
+
+### Adım 1: Dosyaları İndir
+
+```bash
+curl -O https://raw.githubusercontent.com/boysplaydraw/ciphernode/master/docker-compose.yml
+curl -O https://raw.githubusercontent.com/boysplaydraw/ciphernode/master/.env.example
+cp .env.example .env
+```
+
+### Adım 2: .env Dosyasını Düzenle
+
+```bash
+nano .env   # veya: notepad .env (Windows)
+```
+
+Minimum değiştirmeniz gereken satır:
+```env
+# Güçlü bir şifre girin
+DB_PASSWORD=guclu_bir_sifre_girin
+```
+
+### Adım 3: Başlat
+
+```bash
+docker compose up -d
+```
+
+### Adım 4: Veritabanı Şemasını Kur
+
+İlk kurulumda veritabanı tablolarını oluşturun:
+
+```bash
+# Geçici container ile şema push
+docker run --rm \
+  --network ciphernode_ciphernode-network \
+  -e DATABASE_URL="postgresql://ciphernode:${DB_PASSWORD:-ciphernode_secret}@db:5432/ciphernode" \
+  mero003/ciphernode:latest \
+  sh -c "cd /app && npx drizzle-kit push --config=drizzle.config.ts" 2>/dev/null \
+  || echo "Şema zaten mevcut veya sunucu otomatik oluşturdu"
+```
+
+> **Not:** Sunucu ilk bağlantıda tabloları otomatik oluşturmaya çalışır.  
+> Bu adım başarısız olursa endişelenmeyin — logları kontrol edin.
+
+### Adım 5: Doğrula
+
+```bash
+curl http://localhost:5000/api/health
 ```
 
 ---
 
-## Yapilandirma Secenekleri
+## SSL Ayarları
 
-### Cevre Degiskenleri
+### Seçenek A — Self-Signed (Hızlı, Uyarı Verir)
 
-| Degisken | Varsayilan | Aciklama |
-|----------|------------|----------|
-| `PORT` | `5000` | Sunucu portu |
-| `NODE_ENV` | `production` | Calisma ortami |
-| `MESSAGE_TTL_MS` | `300000` | Mesaj yasam suresi (5 dakika) |
-| `CLEANUP_INTERVAL_MS` | `60000` | Temizlik araligi (1 dakika) |
+`.env` dosyasında:
+```env
+HTTPS=true
+# SSL_DOMAIN boş bırakın
+```
 
-### Ornek Yapilandirmalar
+Sunucu başlarken otomatik olarak `/app/ssl/` dizininde sertifika oluşturur.  
+Tarayıcı "Güvenli değil" uyarısı verecektir → *Gelişmiş → Devam Et* seçeneğiyle kabul edin.
 
-**Daha uzun mesaj saklama (30 dakika):**
+### Seçenek B — Let's Encrypt (Gerçek Domain)
+
+```env
+HTTPS=true
+SSL_DOMAIN=relay.example.com
+SSL_EMAIL=admin@example.com
+```
+
+Gereksinim: `relay.example.com` sunucunuza yönlendirilmiş olmalı ve 80/443 portları açık olmalı.
+
+### Seçenek C — HTTP (Reverse Proxy Arkasında)
+
+Nginx / Traefik gibi bir proxy SSL'i hallettiyse:
+```env
+HTTPS=false
+PORT=5000
+```
+
+---
+
+## Yöntem 3 — Kaynak Koddan Derle
+
+Kodu değiştirmek veya kendi image'ınızı oluşturmak için.
+
+### Adım 1: Kodu İndir
+
+```bash
+git clone https://github.com/boysplaydraw/ciphernode.git
+cd ciphernode
+```
+
+### Adım 2: Image Derle
+
+```bash
+docker build -t ciphernode:custom .
+```
+
+Build aşamaları (yaklaşık 2-3 dakika):
+```
+[1/3] deps    → Production bağımlılıkları kurulur
+[2/3] builder → TypeScript derlenir, server bundle oluşturulur
+[3/3] runner  → Küçük, güvenli final image hazırlanır
+```
+
+### Adım 3: Çalıştır
+
+```bash
+# docker-compose.yml'deki image satırını değiştirin:
+# image: mero003/ciphernode:latest
+# →
+# image: ciphernode:custom
+
+docker compose up -d
+```
+
+Veya doğrudan:
 ```bash
 docker run -d \
   --name ciphernode-relay \
+  --restart unless-stopped \
   -p 5000:5000 \
-  -e MESSAGE_TTL_MS=1800000 \
-  -e CLEANUP_INTERVAL_MS=120000 \
-  ghcr.io/ciphernode/relay:latest
-```
-
-**Farkli port kullanimi:**
-```bash
-docker run -d \
-  --name ciphernode-relay \
-  -p 8080:5000 \
-  -e PORT=5000 \
-  ghcr.io/ciphernode/relay:latest
+  -e HTTPS=false \
+  -e DATABASE_URL=postgresql://user:pass@host:5432/ciphernode \
+  ciphernode:custom
 ```
 
 ---
 
-## Guvenlik Onerileri
+## Tüm Ortam Değişkenleri
 
-### 1. Reverse Proxy Kullanin
+| Değişken | Varsayılan | Açıklama |
+|----------|------------|----------|
+| `PORT` | `5000` | HTTP sunucu portu |
+| `HOST` | `0.0.0.0` | Dinleme adresi |
+| `NODE_ENV` | `production` | Çalışma ortamı |
+| `DATABASE_URL` | — | **Zorunlu.** PostgreSQL bağlantı adresi |
+| `DB_PASSWORD` | `ciphernode_secret` | Compose içi PostgreSQL şifresi |
+| `HTTPS` | `true` | `false` → HTTP modu |
+| `SSL_DOMAIN` | boş | Domain varsa Let's Encrypt, yoksa self-signed |
+| `SSL_EMAIL` | boş | Let's Encrypt için e-posta |
+| `SSL_PORT` | `443` | HTTPS portu |
+| `HTTP_REDIRECT_PORT` | `80` | HTTP → HTTPS yönlendirme portu |
+| `MESSAGE_TTL_MS` | `86400000` | Mesaj ömrü (ms). 86400000 = 24 saat |
+| `FILE_TTL_MS` | `86400000` | Dosya ömrü (ms) |
+| `MAX_FILE_SIZE_MB` | `100` | Maksimum yükleme boyutu |
+| `MAX_FILE_DOWNLOADS` | `10` | Dosya başına indirme limiti |
+| `TOR_ENABLED` | `false` | Tor hidden service aktif et |
+| `ONION_ADDRESS` | boş | .onion adresi (gösterim amaçlı) |
 
-Nginx ile SSL/TLS terminasyonu:
+---
 
-```nginx
-server {
-    listen 443 ssl http2;
-    server_name relay.example.com;
-
-    ssl_certificate /etc/letsencrypt/live/relay.example.com/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/relay.example.com/privkey.pem;
-
-    location / {
-        proxy_pass http://localhost:5000;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "upgrade";
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-    }
-}
-```
-
-### 2. Firewall Kurallari
+## Günlük Yönetim
 
 ```bash
-# Sadece gerekli portlari acin
-sudo ufw allow 443/tcp
-sudo ufw allow 80/tcp
-sudo ufw deny 5000/tcp
-```
+# Servisleri başlat
+docker compose up -d
 
-### 3. Docker Guvenlik Ayarlari
+# Servisleri durdur
+docker compose down
 
-```yaml
-services:
-  ciphernode-relay:
-    security_opt:
-      - no-new-privileges:true
-    read_only: true
-    cap_drop:
-      - ALL
-    user: "1001:1001"
-```
+# Logları izle (canlı)
+docker compose logs -f
 
-### 4. Log Rotasyonu
+# Sadece relay logları
+docker compose logs -f ciphernode-relay
 
-```yaml
-services:
-  ciphernode-relay:
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
+# Servis durumu
+docker compose ps
+
+# Relay container'a gir
+docker compose exec ciphernode-relay sh
+
+# Image güncelle (yeni sürüm çek)
+docker compose pull
+docker compose up -d
+
+# Her şeyi sil (veriler dahil — dikkat!)
+docker compose down -v
 ```
 
 ---
 
 ## Sorun Giderme
 
-### Container Baslamiyor
+### Container Başlamıyor
 
 ```bash
-# Loglari kontrol edin
-docker logs ciphernode-relay
+# Hata loglarını gör
+docker compose logs ciphernode-relay
 
-# Container durumunu kontrol edin
-docker ps -a | grep ciphernode
+# Tüm container'ların durumu
+docker compose ps -a
 ```
 
-### Port Cakismasi
+Sık karşılaşılan hatalar:
+- `DATABASE_URL connection refused` → `db` servisi henüz hazır değil, 30 saniye bekleyip tekrar deneyin
+- `EADDRINUSE` → 5000/443/80 portu başka bir uygulama kullanıyor
+
+### Port Çakışması
 
 ```bash
-# Hangi surec portu kullaniyor?
-lsof -i :5000
+# Hangi uygulama 443'ü kullanıyor?
+sudo lsof -i :443       # Linux/macOS
+netstat -ano | findstr :443  # Windows
 
-# Farkli port kullanin
-docker run -p 5001:5000 ...
+# Farklı port kullan
+SSL_PORT=8443 HTTP_REDIRECT_PORT=8080 PORT=5001 docker compose up -d
 ```
 
-### Bellek Yetersizligi
+### Veritabanı Bağlanamıyor
 
 ```bash
-# Kaynak kullanimini kontrol edin
-docker stats ciphernode-relay
+# db servisinin sağlıklı olup olmadığını kontrol et
+docker compose ps db
 
-# Bellek limitini artirin
-docker run -m 512m ...
+# db container'ına bağlan ve test et
+docker compose exec db psql -U ciphernode -d ciphernode -c "\dt"
 ```
 
-### Saglik Kontrolu Basarisiz
+### SSL Sertifikası Hatası
 
 ```bash
-# Manuel kontrol
-curl http://localhost:5000/api/health
+# Mevcut sertifikayı sil (yenisi otomatik oluşturulur)
+docker compose down
+docker volume rm ciphernode_ciphernode-ssl
+docker compose up -d
+```
 
-# Container icinden kontrol
-docker exec ciphernode-relay wget -q --spider http://localhost:5000/api/health
+### Bellek / CPU Sorunu
+
+```bash
+# Anlık kaynak kullanımı
+docker stats
+
+# docker-compose.yml'de limitleri artır:
+# deploy.resources.limits.memory: 1G
 ```
 
 ---
 
-## SSL/TLS ile Tam Kurulum Ornegi
+## Nginx ile Reverse Proxy (Opsiyonel)
 
-### Traefik + Let's Encrypt
+Sunucunuzda zaten Nginx varsa ve CipherNode'u bir subdomain'e almak istiyorsanız:
 
-```yaml
-version: '3.8'
+```nginx
+server {
+    listen 443 ssl http2;
+    server_name relay.example.com;
 
-services:
-  traefik:
-    image: traefik:v2.10
-    command:
-      - "--providers.docker=true"
-      - "--entrypoints.websecure.address=:443"
-      - "--certificatesresolvers.letsencrypt.acme.tlschallenge=true"
-      - "--certificatesresolvers.letsencrypt.acme.email=admin@example.com"
-      - "--certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json"
-    ports:
-      - "443:443"
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-      - letsencrypt:/letsencrypt
+    ssl_certificate     /etc/letsencrypt/live/relay.example.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/relay.example.com/privkey.pem;
 
-  ciphernode-relay:
-    image: ghcr.io/ciphernode/relay:latest
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.ciphernode.rule=Host(`relay.example.com`)"
-      - "traefik.http.routers.ciphernode.tls.certresolver=letsencrypt"
-      - "traefik.http.services.ciphernode.loadbalancer.server.port=5000"
-    environment:
-      - NODE_ENV=production
-      - MESSAGE_TTL_MS=300000
+    location / {
+        proxy_pass http://localhost:5000;
+        proxy_http_version 1.1;
 
-volumes:
-  letsencrypt:
+        # WebSocket desteği (Socket.IO için zorunlu)
+        proxy_set_header Upgrade    $http_upgrade;
+        proxy_set_header Connection "upgrade";
+
+        proxy_set_header Host              $host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        proxy_read_timeout 86400;
+    }
+}
+
+server {
+    listen 80;
+    server_name relay.example.com;
+    return 301 https://$host$request_uri;
+}
 ```
+
+Bu durumda `.env` dosyasında `HTTPS=false` yapın (SSL Nginx'te sonlanır).
 
 ---
 
 ## Destek
 
-- GitHub Issues: https://github.com/ciphernode/ciphernode/issues
-- Dokumantasyon: https://github.com/ciphernode/ciphernode#readme
-
----
-
-**Lisans:** GPLv3
-
-CipherNode - Privacy-first, end-to-end encrypted messaging
+- **GitHub Issues:** https://github.com/boysplaydraw/ciphernode/issues
+- **Docker Hub:** https://hub.docker.com/r/mero003/ciphernode

@@ -1,53 +1,106 @@
+# ╔══════════════════════════════════════════════════════════════╗
+# ║          CipherNode — Docker Compose Yapılandırması          ║
+# ║                                                              ║
+# ║  Servisler:                                                  ║
+# ║    db              → PostgreSQL 16 veritabanı                ║
+# ║    ciphernode-relay → CipherNode relay sunucusu              ║
+# ║                                                              ║
+# ║  Hızlı başlangıç:                                           ║
+# ║    cp .env.example .env    (DATABASE_URL'i düzenle)          ║
+# ║    docker compose up -d                                      ║
+# ╚══════════════════════════════════════════════════════════════╝
+
 services:
+
+  # ── PostgreSQL Veritabanı ──────────────────────────────────────
+  db:
+    image: postgres:16-alpine
+    container_name: ciphernode-db
+    restart: unless-stopped
+
+    environment:
+      POSTGRES_DB:       ciphernode
+      POSTGRES_USER:     ciphernode
+      # Şifreyi .env dosyasında DB_PASSWORD olarak ayarlayın
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-ciphernode_secret}
+
+    volumes:
+      # Veritabanı verileri container silinse bile korunur
+      - ciphernode-db:/var/lib/postgresql/data
+
+    networks:
+      - ciphernode-network
+
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ciphernode -d ciphernode"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+    # Güvenlik: dışarıya port açma (sadece iç network üzerinden erişilir)
+    # Yerel erişim gerekirse: ports: ["5432:5432"]
+
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "5m"
+        max-file: "2"
+
+  # ── CipherNode Relay Sunucusu ─────────────────────────────────
   ciphernode-relay:
     image: mero003/ciphernode:latest
     container_name: ciphernode-relay
     restart: unless-stopped
-    labels:
-      - "org.opencontainers.image.title=CipherNode"
-      - "org.opencontainers.image.source=https://github.com/boysplaydraw/ciphernode"
-      - "org.opencontainers.image.url=https://boysplaydraw.github.io/ciphernode"
+
+    # Veritabanı hazır olmadan başlamaz
+    depends_on:
+      db:
+        condition: service_healthy
 
     ports:
-      # HTTPS — ana port (tarayici ve uygulama bu porta baglanir)
-      - "443:443"
-      # HTTP → HTTPS yonlendirme
-      - "80:80"
-      # Dogrudan HTTP erisim (ihtiyac halinde, orn: yerel gelistirme)
-      - "5000:5000"
+      - "${SSL_PORT:-443}:443"          # HTTPS (tarayıcı ve uygulama)
+      - "${HTTP_REDIRECT_PORT:-80}:80"  # HTTP → HTTPS yönlendirme
+      - "${PORT:-5000}:5000"            # HTTP doğrudan erişim
 
     env_file:
       - path: .env
         required: false
 
     environment:
-      - NODE_ENV=production
-      - PORT=5000
-      - HOST=0.0.0.0
-      # Veritabani — ZORUNLU (.env dosyasinda tanimlayin)
-      # Ornek: DATABASE_URL=postgresql://user:password@db:5432/ciphernode
-      - DATABASE_URL=${DATABASE_URL}
-      # SSL ayarlari
-      # HTTPS=false  → HTTP modunda calis (port 5000)
-      # SSL_DOMAIN=  → Bos birakinca otomatik self-signed sertifika uretilir
-      # SSL_DOMAIN=relay.example.com → Let's Encrypt sertifikasi kullanilir
-      - HTTPS=${HTTPS:-true}
-      - SSL_DOMAIN=${SSL_DOMAIN:-}
-      - SSL_EMAIL=${SSL_EMAIL:-}
-      - SSL_PORT=${SSL_PORT:-443}
-      - HTTP_REDIRECT_PORT=${HTTP_REDIRECT_PORT:-80}
-      # Diger ayarlar
-      - MESSAGE_TTL_MS=${MESSAGE_TTL_MS:-86400000}
-      - FILE_TTL_MS=${FILE_TTL_MS:-86400000}
-      - MAX_FILE_SIZE_MB=${MAX_FILE_SIZE_MB:-100}
-      - MAX_FILE_DOWNLOADS=${MAX_FILE_DOWNLOADS:-10}
-      - ONION_ADDRESS=${ONION_ADDRESS:-}
-      # Tor Hidden Service (opsiyonel)
-      - TOR_ENABLED=${TOR_ENABLED:-false}
+      NODE_ENV:   production
+      PORT:       ${PORT:-5000}
+      HOST:       0.0.0.0
+
+      # Veritabanı — db servisiyle otomatik bağlantı
+      DATABASE_URL: postgresql://ciphernode:${DB_PASSWORD:-ciphernode_secret}@db:5432/ciphernode
+
+      # SSL / HTTPS ayarları
+      # HTTPS=false          → HTTP modunda çalış (sadece port 5000)
+      # SSL_DOMAIN=           → Boş bırakınca otomatik self-signed sertifika
+      # SSL_DOMAIN=relay.com  → Let's Encrypt sertifikası kullanılır
+      HTTPS:              ${HTTPS:-true}
+      SSL_DOMAIN:         ${SSL_DOMAIN:-}
+      SSL_EMAIL:          ${SSL_EMAIL:-}
+      SSL_PORT:           ${SSL_PORT:-443}
+      HTTP_REDIRECT_PORT: ${HTTP_REDIRECT_PORT:-80}
+
+      # Mesaj & dosya ayarları
+      MESSAGE_TTL_MS:      ${MESSAGE_TTL_MS:-86400000}     # 24 saat
+      FILE_TTL_MS:         ${FILE_TTL_MS:-86400000}        # 24 saat
+      MAX_FILE_SIZE_MB:    ${MAX_FILE_SIZE_MB:-100}
+      MAX_FILE_DOWNLOADS:  ${MAX_FILE_DOWNLOADS:-10}
+
+      # Tor (opsiyonel)
+      TOR_ENABLED:    ${TOR_ENABLED:-false}
+      ONION_ADDRESS:  ${ONION_ADDRESS:-}
 
     volumes:
-      # SSL sertifikalari — container yeniden baslatildiginda korunur
+      # SSL sertifikaları container yeniden başlatılınca korunur
       - ciphernode-ssl:/app/ssl
+
+    networks:
+      - ciphernode-network
 
     healthcheck:
       test:
@@ -56,7 +109,7 @@ services:
           wget --no-verbose --tries=1 --no-check-certificate
           https://localhost:${SSL_PORT:-443}/api/health 2>/dev/null
           || wget --no-verbose --tries=1 --spider
-          http://localhost:5000/api/health 2>/dev/null
+          http://localhost:${PORT:-5000}/api/health 2>/dev/null
           || exit 1
       interval: 30s
       timeout: 10s
@@ -72,29 +125,35 @@ services:
     security_opt:
       - no-new-privileges:true
 
-    # read_only kaldirildi — SSL dizinine yazma gerekiyor
-    # ssl volume zaten izole edilmis
-
     tmpfs:
       - /tmp:size=100M,mode=1777
 
     deploy:
       resources:
         limits:
-          cpus: '1'
+          cpus:   '1'
           memory: 512M
         reservations:
-          cpus: '0.25'
+          cpus:   '0.25'
           memory: 128M
 
-    networks:
-      - ciphernode-network
+    labels:
+      - "org.opencontainers.image.title=CipherNode"
+      - "org.opencontainers.image.source=https://github.com/boysplaydraw/ciphernode"
 
+# ── Volume'lar ─────────────────────────────────────────────────
 volumes:
-  # SSL sertifikalari burada saklanir (container silinse bile korunur)
+  ciphernode-db:
+    driver: local
+    labels:
+      description: "CipherNode PostgreSQL veri dizini"
+
   ciphernode-ssl:
     driver: local
+    labels:
+      description: "CipherNode SSL sertifikaları"
 
+# ── Network ───────────────────────────────────────────────────
 networks:
   ciphernode-network:
     driver: bridge

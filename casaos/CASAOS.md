@@ -88,33 +88,44 @@ docker compose -f casaos-app.yaml up -d
 
 ## Nasıl Çalışır?
 
-### Servisler
+### Servis Mimarisi
 
 ```
-┌─────────────────────────────────────────────────┐
-│  CasaOS                                          │
-│                                                  │
-│  [ciphernode-relay]  ──────────────────────────► │ :5000 (web arayüzü)
-│         │                                        │
-│         │ DATABASE_URL                           │
-│         ▼                                        │
-│  [ciphernode-db]  (PostgreSQL 16)                │
-│                                                  │
-└─────────────────────────────────────────────────┘
+Tarayıcı → http://[CasaOS-IP]:8080
+                    │
+             [ciphernode-web]
+              nginx gateway
+             /              \
+  Expo SPA              /api/* + /socket.io/*
+  (static)                     │ proxy
+                        [ciphernode-relay]
+                         port 5000 (iç)
+                                │
+                        [ciphernode-db]
+                         PostgreSQL 16
 ```
 
-### Web Arayüzü (Sunucu Sayfası)
+### Web Uygulaması (Port 8080)
 
 CasaOS panelinde **CipherNode** simgesine tıklayınca açılan sayfa:
 
 ```
-http://[CasaOS-IP]:5000
+http://[CasaOS-IP]:8080
 ```
 
-Bu sayfa:
-- Sunucunun çalıştığını gösterir
-- Bağlantı bilgilerini (sunucu URL, port) listeler
-- Mobil uygulama indirme linklerini sunar
+Bu, tam işlevsel **mesajlaşma web uygulamasıdır**. Telefona uygulama indirmeden tarayıcıdan kullanabilirsiniz.
+
+- Aynı ağdaki herhangi bir cihazdan erişilebilir (PC, tablet, telefon)
+- `/api/*` ve `/socket.io/*` istekleri otomatik olarak relay'e yönlendirilir
+- Ekstra yapılandırma gerekmez — sunucu URL'i otomatik tespit edilir
+
+### Relay API (Port 5000)
+
+Mobil uygulamanın bağlandığı backend:
+
+```
+http://[CasaOS-IP]:5000
+```
 
 ### Mobil Uygulama Bağlantısı
 
@@ -124,11 +135,10 @@ Bu sayfa:
    ```
    http://192.168.1.100:5000
    ```
-   *(CasaOS panelinizde cihaz IP'sini görebilirsiniz)*
-4. Kaydete tıklayın — uygulama bu relay sunucusuna bağlanır
+4. Kaydet — uygulama relay sunucusuna bağlanır
 
-> **Ağ içinden bağlanıyorsanız:** Yerel IP kullanın (192.168.x.x)  
-> **Dışarıdan bağlanıyorsanız:** Router'da port yönlendirme gerekir (5000 → CasaOS IP)
+> **Yerel ağda:** `192.168.x.x:5000` kullanın  
+> **İnternetten:** Router'da port yönlendirme gerekir (`5000` → CasaOS IP)
 
 ---
 

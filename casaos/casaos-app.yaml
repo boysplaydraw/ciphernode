@@ -6,15 +6,50 @@ name: CipherNode
 # Kurulum:
 #   CasaOS → App Store → Custom Install → Bu dosyayı yapıştır
 #
-# İçerir:
-#   - CipherNode relay sunucusu (mero003/ciphernode:latest)
-#   - PostgreSQL 16 veritabanı
+# Servisler:
+#   ciphernode-web   → Web uygulaması + API proxy (port 8080) ← CasaOS bunu açar
+#   ciphernode-relay → Relay sunucusu backend (port 5000)
+#   ciphernode-db    → PostgreSQL 16 veritabanı
 #
-# Kurulum sonrası CasaOS panelinde "CipherNode" simgesine
-# tıklayarak web arayüzüne ulaşabilirsiniz.
+# Kullanım:
+#   - CasaOS simgesine tıklayınca → http://[IP]:8080 (web uygulaması)
+#   - Mobil uygulama için sunucu URL: http://[IP]:5000
 # ============================================================
 
 services:
+
+  # ── Web Uygulaması (Nginx Gateway) ───────────────────────────
+  # Expo tabanlı web uygulamasını servis eder.
+  # /api/* ve /socket.io/* isteklerini relay'e proxy eder.
+  # CasaOS panelinde bu servisin portu (8080) açılır.
+  ciphernode-web:
+    image: mero003/ciphernode-web:latest
+    container_name: ciphernode-web
+    restart: unless-stopped
+
+    depends_on:
+      ciphernode:
+        condition: service_healthy
+
+    ports:
+      - "8080:8080"   # Web uygulaması — CasaOS bu portu kullanır
+
+    networks:
+      - ciphernode-network
+
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:8080/ || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+    x-casaos:
+      ports:
+        - container: "8080"
+          description:
+            en_us: "CipherNode web application (main entry point for browsers)"
+            tr_tr: "CipherNode web uygulaması (tarayıcılar için ana giriş noktası)"
 
   # ── CipherNode Relay Sunucusu ────────────────────────────────
   ciphernode:
@@ -27,64 +62,48 @@ services:
         condition: service_healthy
 
     ports:
-      - "5000:5000"     # HTTP / web arayüzü (CasaOS bu portu kullanır)
-      - "5443:443"      # HTTPS (opsiyonel, SSL etkinse)
+      - "5000:5000"   # Relay API — mobil uygulama bu porta bağlanır
 
     environment:
       NODE_ENV:    production
       PORT:        5000
       HOST:        0.0.0.0
 
-      # Veritabanı — db servisiyle otomatik bağlantı
       DATABASE_URL: postgresql://ciphernode:${DB_PASSWORD:-ciphernode_secret}@db:5432/ciphernode
 
-      # SSL: false = HTTP modu (CasaOS için önerilen)
-      # SSL sertifikası için DOCKER.md → SSL Ayarları bölümüne bakın
       HTTPS: "false"
 
-      # Mesaj & dosya ayarları
-      MESSAGE_TTL_MS:    86400000   # 24 saat
-      FILE_TTL_MS:       86400000   # 24 saat
+      MESSAGE_TTL_MS:    86400000
+      FILE_TTL_MS:       86400000
       MAX_FILE_SIZE_MB:  100
       MAX_FILE_DOWNLOADS: 10
+
+      TOR_ENABLED:   "false"
+      ONION_ADDRESS: ""
 
     volumes:
       - /DATA/AppData/ciphernode/ssl:/app/ssl
 
+    networks:
+      - ciphernode-network
+
     healthcheck:
-      test:
-        - "CMD-SHELL"
-        - "wget --no-verbose --tries=1 --spider http://localhost:5000/api/health || exit 1"
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:5000/api/health || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 20s
 
-    networks:
-      - ciphernode-network
-
     x-casaos:
       envs:
-        - container: PORT
-          description:
-            en_us: "Server HTTP port (default: 5000)"
-            tr_tr: "Sunucu HTTP portu (varsayılan: 5000)"
         - container: HTTPS
           description:
-            en_us: "Enable HTTPS (true/false). Requires SSL certificate."
-            tr_tr: "HTTPS etkinleştir (true/false). SSL sertifikası gerekir."
-        - container: DATABASE_URL
-          description:
-            en_us: "PostgreSQL connection string. Auto-configured for local db service."
-            tr_tr: "PostgreSQL bağlantı adresi. Yerel db servisi için otomatik ayarlanır."
+            en_us: "Enable HTTPS (true/false). Set to false when using web app via port 8080."
+            tr_tr: "HTTPS etkinleştir. Port 8080 üzerinden kullanıyorsanız false bırakın."
         - container: MESSAGE_TTL_MS
           description:
             en_us: "Message lifetime in milliseconds (86400000 = 24 hours)"
-            tr_tr: "Mesaj ömrü (milisaniye). 86400000 = 24 saat"
-        - container: FILE_TTL_MS
-          description:
-            en_us: "File lifetime in milliseconds (86400000 = 24 hours)"
-            tr_tr: "Dosya ömrü (milisaniye). 86400000 = 24 saat"
+            tr_tr: "Mesaj ömrü (ms). 86400000 = 24 saat"
         - container: MAX_FILE_SIZE_MB
           description:
             en_us: "Maximum upload file size in MB"
@@ -92,20 +111,16 @@ services:
         - container: TOR_ENABLED
           description:
             en_us: "Enable Tor hidden service (true/false)"
-            tr_tr: "Tor gizli servisi etkinleştir (true/false)"
+            tr_tr: "Tor gizli servisi (true/false)"
       ports:
         - container: "5000"
           description:
-            en_us: "CipherNode web interface & relay server (HTTP)"
-            tr_tr: "CipherNode web arayüzü & relay sunucusu (HTTP)"
-        - container: "443"
-          description:
-            en_us: "HTTPS port (only if HTTPS=true)"
-            tr_tr: "HTTPS portu (yalnızca HTTPS=true ise)"
+            en_us: "Relay API — connect mobile app to this port"
+            tr_tr: "Relay API — mobil uygulama bu porta bağlanır"
       volumes:
         - container: /app/ssl
           description:
-            en_us: "SSL certificate storage"
+            en_us: "SSL certificate directory"
             tr_tr: "SSL sertifika dizini"
 
   # ── PostgreSQL Veritabanı ────────────────────────────────────
@@ -136,8 +151,8 @@ services:
       envs:
         - container: POSTGRES_PASSWORD
           description:
-            en_us: "Database password (must match DB_PASSWORD)"
-            tr_tr: "Veritabanı şifresi (DB_PASSWORD ile aynı olmalı)"
+            en_us: "Database password"
+            tr_tr: "Veritabanı şifresi"
       volumes:
         - container: /var/lib/postgresql/data
           description:
@@ -153,48 +168,57 @@ x-casaos:
     - amd64
     - arm64
     - arm
-  main: ciphernode
+  main: ciphernode-web
   author: CipherNode
   category: Social
   description:
     en_us: |
       CipherNode is an end-to-end encrypted, anonymous messaging relay server.
 
+      Includes:
+      • Web application (port 8080) — use from any browser on your network
+      • Relay server (port 5000)    — connect mobile app here
+      • PostgreSQL database         — automatic, no setup needed
+
       Features:
       • OpenPGP RSA-4096 end-to-end encryption
       • Anonymous messaging (no registration required)
       • Tor hidden service (.onion) support
       • Encrypted file sharing (up to 100MB)
-      • Web interface accessible from CasaOS dashboard
       • Zero logs, zero tracking
 
-      The CipherNode mobile app (Android/iOS) connects to this relay server.
-      After installation, open the web interface and copy your server URL
-      to configure the mobile app.
+      After installation:
+      • Open web app: click the CipherNode icon in CasaOS (port 8080)
+      • Mobile app:   set server URL to http://[CasaOS-IP]:5000
     tr_tr: |
       CipherNode, uçtan uca şifreli anonim mesajlaşma relay sunucusudur.
+
+      İçerir:
+      • Web uygulaması (port 8080) — ağdaki herhangi bir tarayıcıdan kullanın
+      • Relay sunucusu (port 5000) — mobil uygulamayı buraya bağlayın
+      • PostgreSQL veritabanı      — otomatik, kurulum gerektirmez
 
       Özellikler:
       • OpenPGP RSA-4096 uçtan uca şifreleme
       • Anonim mesajlaşma (kayıt gerekmez)
       • Tor gizli servisi (.onion) desteği
       • Şifreli dosya paylaşımı (100MB'a kadar)
-      • CasaOS panelinden erişilebilen web arayüzü
       • Sıfır kayıt, sıfır izleme
 
-      CipherNode mobil uygulaması (Android/iOS) bu relay sunucusuna bağlanır.
-      Kurulum sonrası web arayüzünü açın ve sunucu URL'nizi mobil uygulamaya girin.
+      Kurulum sonrası:
+      • Web uygulaması: CasaOS'ta CipherNode simgesine tıklayın (port 8080)
+      • Mobil uygulama: sunucu URL = http://[CasaOS-IP]:5000
   developer: CipherNode
   hostname: ""
   icon: https://raw.githubusercontent.com/boysplaydraw/ciphernode/master/assets/icon.png
   index: /
   is_uncontrolled: false
-  port_map: "5000"
+  port_map: "8080"
   scheme: http
-  store_app_id: ciphernode-relay
+  store_app_id: ciphernode
   tagline:
-    en_us: Privacy-first encrypted messaging relay
-    tr_tr: Gizlilik odaklı şifreli mesajlaşma röle
+    en_us: Encrypted messaging — web app + relay server
+    tr_tr: Şifreli mesajlaşma — web uygulaması + relay sunucusu
   title:
     en_us: CipherNode
     tr_tr: CipherNode

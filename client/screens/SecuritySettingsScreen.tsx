@@ -13,11 +13,12 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 import * as Clipboard from "expo-clipboard";
 import * as Haptics from "expo-haptics";
+import * as Updates from "expo-updates";
 import { ThemedText } from "@/components/ThemedText";
 import { ThemedView } from "@/components/ThemedView";
 import { Colors, Spacing, BorderRadius, Fonts } from "@/constants/theme";
 import { useIdentity } from "@/hooks/useIdentity";
-import { clearAllData } from "@/lib/storage";
+import { clearAllData, setLanguage as saveLanguage } from "@/lib/storage";
 import { useLanguage } from "@/constants/language";
 
 export default function SecuritySettingsScreen() {
@@ -90,19 +91,56 @@ export default function SecuritySettingsScreen() {
     }
   };
 
+  const reloadAppAfterReset = async () => {
+    if (Platform.OS === "web") {
+      (
+        globalThis as { location?: { reload?: () => void } }
+      ).location?.reload?.();
+      return;
+    }
+
+    try {
+      await Updates.reloadAsync();
+    } catch {}
+  };
+
+  const regenerateKeys = async () => {
+    await clearAllData();
+    await saveLanguage(language);
+    await regenerate();
+    if (Platform.OS !== "web") {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      Alert.alert(t.success, t.newIdentityGenerated, [
+        { text: "OK", onPress: reloadAppAfterReset },
+      ]);
+      return;
+    }
+
+    await reloadAppAfterReset();
+  };
+
   const handleRegenerateKeys = () => {
+    if (Platform.OS === "web") {
+      const confirmed = (
+        globalThis as { confirm?: (message?: string) => boolean }
+      ).confirm?.(`${t.regenerateTitle}\n\n${t.regenerateWarning}`);
+      if (confirmed) {
+        regenerateKeys().catch(() => {
+          Alert.alert(t.regenerateTitle, t.regenerateWarning);
+        });
+      }
+      return;
+    }
+
     Alert.alert(t.regenerateTitle, t.regenerateWarning, [
       { text: t.cancel, style: "cancel" },
       {
         text: t.regenerate,
         style: "destructive",
-        onPress: async () => {
-          await clearAllData();
-          await regenerate();
-          if (Platform.OS !== "web") {
-            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-          }
-          Alert.alert(t.success, t.newIdentityGenerated);
+        onPress: () => {
+          regenerateKeys().catch(() => {
+            Alert.alert(t.regenerateTitle, t.regenerateWarning);
+          });
         },
       },
     ]);

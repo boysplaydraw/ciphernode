@@ -648,41 +648,74 @@ export default function SettingsScreen() {
     }
   };
 
+  const reloadAppAfterReset = async () => {
+    if (Platform.OS === "web") {
+      (
+        globalThis as { location?: { reload?: () => void } }
+      ).location?.reload?.();
+      return;
+    }
+
+    try {
+      await Updates.reloadAsync();
+    } catch {}
+  };
+
+  const resetIdentityData = async () => {
+    try {
+      await clearAllData();
+      await saveLanguage(currentLanguage);
+      const newIdentity = await regenerate();
+
+      if (Platform.OS === "web") {
+        await reloadAppAfterReset();
+        return;
+      }
+
+      Alert.alert(
+        currentLanguage === "tr" ? "Sıfırlandı" : "Reset",
+        currentLanguage === "tr"
+          ? `Yeni kimlik oluşturuldu: ${newIdentity.id}`
+          : `New identity generated: ${newIdentity.id}`,
+        [{ text: "OK", onPress: reloadAppAfterReset }],
+      );
+    } catch {
+      Alert.alert(
+        currentLanguage === "tr" ? "Hata" : "Error",
+        currentLanguage === "tr" ? "Sıfırlama başarısız." : "Reset failed.",
+      );
+    }
+  };
+
   const handleResetIdentity = async () => {
-    Alert.alert(
-      currentLanguage === "tr" ? "Kimliği Sıfırla" : "Reset Identity",
+    const title =
+      currentLanguage === "tr" ? "Kimliği Sıfırla" : "Reset Identity";
+    const message =
       currentLanguage === "tr"
         ? "Bu işlem mevcut kimliğinizi silecek ve yeni bir kimlik oluşturacak. Kişileriniz ve sohbetleriniz kaybolacak. Emin misiniz?"
-        : "This will delete your current identity and create a new one. Your contacts and chats will be lost. Are you sure?",
-      [
-        {
-          text: currentLanguage === "tr" ? "İptal" : "Cancel",
-          style: "cancel",
-        },
-        {
-          text: currentLanguage === "tr" ? "Sıfırla" : "Reset",
-          style: "destructive",
-          onPress: async () => {
-            try {
-              const newIdentity = await regenerate();
-              Alert.alert(
-                currentLanguage === "tr" ? "Sıfırlandı" : "Reset",
-                currentLanguage === "tr"
-                  ? `Yeni kimlik oluşturuldu: ${newIdentity.id}`
-                  : `New identity generated: ${newIdentity.id}`,
-              );
-            } catch {
-              Alert.alert(
-                currentLanguage === "tr" ? "Hata" : "Error",
-                currentLanguage === "tr"
-                  ? "Sıfırlama başarısız."
-                  : "Reset failed.",
-              );
-            }
-          },
-        },
-      ],
-    );
+        : "This will delete your current identity and create a new one. Your contacts and chats will be lost. Are you sure?";
+
+    if (Platform.OS === "web") {
+      const confirmed = (
+        globalThis as { confirm?: (message?: string) => boolean }
+      ).confirm?.(`${title}\n\n${message}`);
+      if (confirmed) {
+        await resetIdentityData();
+      }
+      return;
+    }
+
+    Alert.alert(title, message, [
+      {
+        text: currentLanguage === "tr" ? "İptal" : "Cancel",
+        style: "cancel",
+      },
+      {
+        text: currentLanguage === "tr" ? "Sıfırla" : "Reset",
+        style: "destructive",
+        onPress: resetIdentityData,
+      },
+    ]);
   };
 
   const handleFullReset = async () => {

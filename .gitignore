@@ -26,6 +26,10 @@ npm-debug.*
 yarn-debug.*
 yarn-error.*
 .web-dev.pid
+.expo-lan.pid
+.localtunnel.pid
+.localtunnel.out
+.localtunnel.err
 
 # local assistant/editor state
 .claude/settings.local.json

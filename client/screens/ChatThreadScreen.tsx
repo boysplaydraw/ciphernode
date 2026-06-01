@@ -75,6 +75,7 @@ import {
   formatFileSize,
   getFileIcon,
   scrubFileMetadata,
+  scrubNativeImageMetadata,
 } from "@/lib/file-share";
 import {
   isWebRTCAvailable,
@@ -83,6 +84,7 @@ import {
   receiveFileP2P,
 } from "@/lib/webrtc-p2p";
 import { isElectron } from "@/lib/electron-bridge";
+import { sendNostrSignal, onNostrSignal } from "@/lib/nostr-signal";
 import { getApiUrl } from "@/lib/query-client";
 import { getPrivacySettings } from "@/lib/storage";
 import type { ChatsStackParamList } from "@/navigation/ChatsStackNavigator";
@@ -405,6 +407,32 @@ export default function ChatThreadScreen() {
     return unsub;
   }, [contactId, contact]);
 
+  const sendP2PTransferSignal = useCallback(
+    (event: string, data: unknown) => {
+      if (isRelayConnected()) {
+        sendWebRTCSignal(event, data);
+        return;
+      }
+
+      if (contact?.nostrPubkey) {
+        sendNostrSignal(contact.nostrPubkey, event, data).catch(() => {});
+      }
+    },
+    [contact],
+  );
+
+  const onP2PTransferSignal = useCallback(
+    (handler: (event: string, data: unknown) => void) => {
+      const unsubscribeSocket = onWebRTCSignal(handler);
+      const unsubscribeNostr = onNostrSignal(handler);
+      return () => {
+        unsubscribeSocket();
+        unsubscribeNostr();
+      };
+    },
+    [],
+  );
+
   useEffect(() => {
     // Mesaj zaten App.tsx global handler tarafından kaydedildi,
     // sadece bu ekranla ilgili mesajlarda UI'yi güncelle
@@ -487,8 +515,8 @@ export default function ChatThreadScreen() {
         await receiveFileP2P({
           peerId: meta.from,
           offerSdp,
-          sendSignal: sendWebRTCSignal,
-          onSignalReceived: onWebRTCSignal,
+          sendSignal: sendP2PTransferSignal,
+          onSignalReceived: onP2PTransferSignal,
           onProgress: (p) => {
             if (p.stage === "error") {
               setIncomingFiles((prev) =>
@@ -519,7 +547,7 @@ export default function ChatThreadScreen() {
         );
       }
     },
-    [],
+    [onP2PTransferSignal, sendP2PTransferSignal],
   );
 
   // Dosya gönder — akıllı yönlendirme
@@ -565,7 +593,7 @@ export default function ChatThreadScreen() {
 
       setSendingFile(true);
 
-      const method = getTransferMethod(fileSize);
+      const method = getTransferMethod(fileSize, isRelayConnected());
 
       if (method === "too-large") {
         Alert.alert(
@@ -578,11 +606,15 @@ export default function ChatThreadScreen() {
       // ── P2P yolu (> 100 MB) ──────────────────────────────────────────
       if (method === "p2p") {
         // Alıcıya meta bildirim gönder
-        sendP2PFileOffer(contactId, {
-          fileName: asset.name,
-          fileSize,
-          mimeType,
-        });
+        sendP2PFileOffer(
+          contactId,
+          {
+            fileName: asset.name,
+            fileSize,
+            mimeType,
+          },
+          contact.nostrPubkey,
+        );
 
         // Chunk okuyucu fonksiyon
         let readChunk: (offset: number, length: number) => Promise<ArrayBuffer>;
@@ -615,8 +647,8 @@ export default function ChatThreadScreen() {
           totalSize: fileSize,
           fileName: asset.name,
           mimeType,
-          sendSignal: sendWebRTCSignal,
-          onSignalReceived: onWebRTCSignal,
+          sendSignal: sendP2PTransferSignal,
+          onSignalReceived: onP2PTransferSignal,
           onProgress: (p) => {
             if (p.stage === "error") Alert.alert("P2P Hata", p.message);
           },
@@ -648,13 +680,16 @@ export default function ChatThreadScreen() {
           },
         }));
       } else {
-        const base64 = await FileSystem.readAsStringAsync(asset.uri, {
+        const nativeFile = privacySettings.autoMetadataScrubbing
+          ? await scrubNativeImageMetadata(asset.uri, mimeType)
+          : { uri: asset.uri, mimeType };
+        const base64 = await FileSystem.readAsStringAsync(nativeFile.uri, {
           encoding: FileSystem.EncodingType.Base64,
         });
         ({ fileId, encryptedKey } = await shareFile({
           fileBase64: base64,
           fileName: asset.name,
-          fileMimeType: mimeType,
+          fileMimeType: nativeFile.mimeType,
           fileSize,
           recipientPublicKey: contact.publicKey,
           senderPrivateKey: identity?.privateKey,
@@ -687,7 +722,14 @@ export default function ChatThreadScreen() {
     } finally {
       setSendingFile(false);
     }
-  }, [contact, identity, contactId, pickWebFile]);
+  }, [
+    contact,
+    identity,
+    contactId,
+    pickWebFile,
+    onP2PTransferSignal,
+    sendP2PTransferSignal,
+  ]);
 
   // Dosya indir ve aç
   const handleDownloadFile = useCallback(

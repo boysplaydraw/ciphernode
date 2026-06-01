@@ -423,6 +423,27 @@ export async function scrubFileMetadata(file: File): Promise<File> {
 }
 
 // ── Dosya boyutu formatla ─────────────────────────────────────────────
+export async function scrubNativeImageMetadata(
+  uri: string,
+  mimeType: string,
+): Promise<{ uri: string; mimeType: string }> {
+  const isImage = mimeType.startsWith("image/") && !mimeType.includes("svg");
+  if (!isImage) return { uri, mimeType };
+
+  try {
+    const { manipulateAsync, SaveFormat } =
+      await import("expo-image-manipulator");
+    const outputMime = mimeType === "image/png" ? "image/png" : "image/jpeg";
+    const result = await manipulateAsync(uri, [], {
+      compress: 0.95,
+      format: outputMime === "image/png" ? SaveFormat.PNG : SaveFormat.JPEG,
+    });
+    return { uri: result.uri, mimeType: outputMime };
+  } catch {
+    return { uri, mimeType };
+  }
+}
+
 export function formatFileSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;

@@ -139,6 +139,7 @@ let relayHealthy: boolean = false; // Relay sunucusu sağlıklı mı?
 
 type RelayStatusCallback = (healthy: boolean) => void;
 const relayStatusListeners: RelayStatusCallback[] = [];
+let unsubscribeNostrP2PFileOffer: (() => void) | null = null;
 
 /** Relay bağlantı durumunu bildir */
 function setRelayHealth(healthy: boolean): void {
@@ -153,6 +154,7 @@ function setRelayHealth(healthy: boolean): void {
         if (identity?.nostrPrivkey && identity?.nostrPubkey) {
           import("./nostr-signal").then(({ initNostrSignal }) => {
             initNostrSignal(identity.nostrPrivkey!, identity.nostrPubkey!);
+            ensureNostrP2PFileOfferBridge();
           });
         }
       }),
@@ -166,6 +168,18 @@ function setRelayHealth(healthy: boolean): void {
 }
 
 /** Ghost modu aç/kapat */
+function ensureNostrP2PFileOfferBridge(): void {
+  if (unsubscribeNostrP2PFileOffer) return;
+
+  import("./nostr-signal").then(({ onNostrSignal }) => {
+    if (unsubscribeNostrP2PFileOffer) return;
+    unsubscribeNostrP2PFileOffer = onNostrSignal((event, data) => {
+      if (event !== "p2p:file-offer") return;
+      p2pFileOfferListeners.forEach((cb) => cb(data as P2PFileOffer));
+    });
+  });
+}
+
 export function setGhostMode(enabled: boolean): void {
   ghostModeEnabled = enabled;
 }
@@ -197,6 +211,7 @@ export async function activateP2PMode(): Promise<void> {
   if (identity?.nostrPrivkey && identity?.nostrPubkey) {
     const { initNostrSignal } = await import("./nostr-signal");
     initNostrSignal(identity.nostrPrivkey, identity.nostrPubkey);
+    ensureNostrP2PFileOfferBridge();
   }
 }
 
@@ -792,12 +807,23 @@ export function onFileShare(callback: FileShareCallback): () => void {
 export function sendP2PFileOffer(
   to: string,
   info: Omit<P2PFileOffer, "from">,
+  toNostrPubkey?: string,
 ): void {
   if (socket?.connected && currentUserId) {
     socket.emit("p2p:file-offer", {
       to,
       from: currentUserId,
       ...info,
+    });
+    return;
+  }
+
+  if (currentUserId && toNostrPubkey) {
+    import("./nostr-signal").then(({ sendNostrSignal }) => {
+      sendNostrSignal(toNostrPubkey, "p2p:file-offer", {
+        from: currentUserId,
+        ...info,
+      }).catch(() => {});
     });
   }
 }

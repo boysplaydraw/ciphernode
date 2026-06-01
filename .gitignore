@@ -30,6 +30,7 @@ yarn-error.*
 .localtunnel.pid
 .localtunnel.out
 .localtunnel.err
+.dist-lan.pid
 
 # local assistant/editor state
 .claude/settings.local.json

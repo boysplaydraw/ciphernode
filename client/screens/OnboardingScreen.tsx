@@ -347,7 +347,12 @@ export default function OnboardingScreen({
       return;
     }
 
-    await doFinish(connectionMode === "tor");
+    if (connectionMode === "tor") {
+      await checkTorAndFinish();
+      return;
+    }
+
+    await doFinish(false);
   };
 
   const modes: {

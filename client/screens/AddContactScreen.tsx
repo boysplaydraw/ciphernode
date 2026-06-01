@@ -7,7 +7,7 @@ import {
   Alert,
   Platform,
 } from "react-native";
-import { useNavigation, CommonActions } from "@react-navigation/native";
+import { useNavigation } from "@react-navigation/native";
 import { useHeaderHeight } from "@react-navigation/elements";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
@@ -234,20 +234,26 @@ export default function AddContactScreen() {
           ? "Kişi eklendi. Açık anahtar henüz yok — kişi ilk kez uygulamaya bağlandığında otomatik senkronize edilecek."
           : "Contact added. No public key yet — it will sync automatically when they first connect.";
 
-      Alert.alert(t.success, successMsg, [
-        {
-          text: "OK",
-          onPress: () => {
-            (navigation as any).navigate("Main", {
-              screen: "ChatsTab",
-              params: {
-                screen: "ChatThread",
-                params: { contactId: parsedId },
-              },
-            });
+      const openChat = () => {
+        (navigation as any).navigate("Main", {
+          screen: "ChatsTab",
+          params: {
+            screen: "ChatThread",
+            params: { contactId: parsedId },
           },
-        },
-      ]);
+        });
+      };
+
+      if (Platform.OS === "web") {
+        openChat();
+      } else {
+        Alert.alert(t.success, successMsg, [
+          {
+            text: "OK",
+            onPress: openChat,
+          },
+        ]);
+      }
     } catch (error) {
       Alert.alert(t.error, t.failedToAdd);
     } finally {

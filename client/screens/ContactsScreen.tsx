@@ -20,8 +20,13 @@ import * as Haptics from "expo-haptics";
 import { ThemedText } from "@/components/ThemedText";
 import { ThemedView } from "@/components/ThemedView";
 import { Colors, Spacing, BorderRadius } from "@/constants/theme";
-import { getContacts, removeContact } from "@/lib/storage";
-import type { Contact } from "@/lib/crypto";
+import {
+  deleteContactAndChat,
+  getContacts,
+  pushContactsToServer,
+} from "@/lib/storage";
+import { getIdentity, type Contact } from "@/lib/crypto";
+import { getApiUrl } from "@/lib/query-client";
 import { useLanguage } from "@/constants/language";
 import ActionSheet, { type ActionSheetOption } from "@/components/ActionSheet";
 
@@ -111,7 +116,13 @@ export default function ContactsScreen() {
 
   const handleDeleteContact = async () => {
     if (!selectedContact) return;
-    await removeContact(selectedContact.id);
+    await deleteContactAndChat(selectedContact.id);
+    const identity = await getIdentity();
+    if (identity?.id) {
+      try {
+        await pushContactsToServer(identity.id, getApiUrl());
+      } catch {}
+    }
     if (Platform.OS !== "web") {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     }

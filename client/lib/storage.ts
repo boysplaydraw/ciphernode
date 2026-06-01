@@ -2,6 +2,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import type { Contact } from "./crypto";
 
 const CONTACTS_KEY = "@ciphernode/contacts";
+const DELETED_CONTACTS_KEY = "@ciphernode/deleted_contacts";
 const CHATS_KEY = "@ciphernode/chats";
 const GROUPS_KEY = "@ciphernode/groups";
 const SETTINGS_KEY = "@ciphernode/settings";
@@ -124,6 +125,7 @@ export async function getContacts(): Promise<Contact[]> {
 }
 
 export async function addContact(contact: Contact): Promise<void> {
+  await unmarkContactDeleted(contact.id);
   const contacts = await getContacts();
   const exists = contacts.find((c) => c.id === contact.id);
   if (!exists) {
@@ -146,9 +148,32 @@ export async function updateContact(
 }
 
 export async function removeContact(contactId: string): Promise<void> {
+  await markContactDeleted(contactId);
   const contacts = await getContacts();
   const filtered = contacts.filter((c) => c.id !== contactId);
   await AsyncStorage.setItem(CONTACTS_KEY, JSON.stringify(filtered));
+}
+
+async function getDeletedContactIds(): Promise<Set<string>> {
+  try {
+    const stored = await AsyncStorage.getItem(DELETED_CONTACTS_KEY);
+    const ids: string[] = stored ? JSON.parse(stored) : [];
+    return new Set(ids);
+  } catch {
+    return new Set();
+  }
+}
+
+async function markContactDeleted(contactId: string): Promise<void> {
+  const ids = await getDeletedContactIds();
+  ids.add(contactId);
+  await AsyncStorage.setItem(DELETED_CONTACTS_KEY, JSON.stringify([...ids]));
+}
+
+async function unmarkContactDeleted(contactId: string): Promise<void> {
+  const ids = await getDeletedContactIds();
+  if (!ids.delete(contactId)) return;
+  await AsyncStorage.setItem(DELETED_CONTACTS_KEY, JSON.stringify([...ids]));
 }
 
 export async function getContact(contactId: string): Promise<Contact | null> {
@@ -265,6 +290,9 @@ export async function deleteMessage(
     chat.messages = chat.messages.filter((m) => m.id !== messageId);
     if (chat.messages.length > 0) {
       chat.lastMessageAt = chat.messages[chat.messages.length - 1].timestamp;
+    } else {
+      chat.lastMessageAt = 0;
+      chat.unreadCount = 0;
     }
     await AsyncStorage.setItem(CHATS_KEY, JSON.stringify(chats));
   }
@@ -497,6 +525,7 @@ export async function clearAllData(): Promise<void> {
     LANGUAGE_KEY,
     PRIVACY_SETTINGS_KEY,
     TOR_SETTINGS_KEY,
+    DELETED_CONTACTS_KEY,
     "@ciphernode/identity",
   ]);
 }
@@ -609,10 +638,11 @@ export async function pullContactsFromServer(
 
   const localContacts = await getContacts();
   const localIds = new Set(localContacts.map((c) => c.id));
+  const deletedIds = await getDeletedContactIds();
 
   let added = 0;
   for (const contact of remoteContacts) {
-    if (!localIds.has(contact.id)) {
+    if (!localIds.has(contact.id) && !deletedIds.has(contact.id)) {
       await addContact(contact);
       added++;
     }

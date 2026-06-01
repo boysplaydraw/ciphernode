@@ -27,10 +27,11 @@ import {
   archiveGroup,
   deleteContactAndChat,
   deleteGroup,
+  pushContactsToServer,
   type Chat,
   type Group,
 } from "@/lib/storage";
-import type { Contact } from "@/lib/crypto";
+import { getIdentity, type Contact } from "@/lib/crypto";
 import type { ChatsStackParamList } from "@/navigation/ChatsStackNavigator";
 import ConnectionStatus from "@/components/ConnectionStatus";
 import { useLanguage } from "@/constants/language";
@@ -294,6 +295,12 @@ export default function ChatsListScreen() {
               onPress: async () => {
                 if (item.type === "chat") {
                   await deleteContactAndChat(item.contactId);
+                  const identity = await getIdentity();
+                  if (identity?.id) {
+                    try {
+                      await pushContactsToServer(identity.id, getApiUrl());
+                    } catch {}
+                  }
                 } else {
                   await deleteGroup(item.id);
                 }

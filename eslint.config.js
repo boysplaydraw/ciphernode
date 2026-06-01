@@ -13,6 +13,12 @@ module.exports = defineConfig([
     },
   },
   {
-    ignores: ["dist/*", "electron/dist/*", "server_dist/*", "node_modules/*"],
+    ignores: [
+      "dist/**",
+      "electron/dist/**",
+      "server_dist/**",
+      "node_modules/**",
+      "**/target/**",
+    ],
   },
 ]);

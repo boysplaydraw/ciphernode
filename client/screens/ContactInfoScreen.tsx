@@ -15,8 +15,13 @@ import * as Haptics from "expo-haptics";
 import { ThemedText } from "@/components/ThemedText";
 import { ThemedView } from "@/components/ThemedView";
 import { Colors, Spacing, BorderRadius, Fonts } from "@/constants/theme";
-import { getContact, deleteChat, removeContact } from "@/lib/storage";
-import type { Contact } from "@/lib/crypto";
+import {
+  deleteContactAndChat,
+  getContact,
+  pushContactsToServer,
+} from "@/lib/storage";
+import { getIdentity, type Contact } from "@/lib/crypto";
+import { getApiUrl } from "@/lib/query-client";
 import type { ChatsStackParamList } from "@/navigation/ChatsStackNavigator";
 import { Platform } from "react-native";
 
@@ -51,16 +56,21 @@ export default function ContactInfoScreen() {
 
   const handleDeleteConversation = () => {
     Alert.alert(
-      "Delete Conversation",
-      "This will permanently delete all messages with this contact. This action cannot be undone.",
+      "Delete Contact and Conversation",
+      "This will permanently delete this contact and all messages with them. This action cannot be undone.",
       [
         { text: "Cancel", style: "cancel" },
         {
           text: "Delete",
           style: "destructive",
           onPress: async () => {
-            await deleteChat(contactId);
-            await removeContact(contactId);
+            await deleteContactAndChat(contactId);
+            const identity = await getIdentity();
+            if (identity?.id) {
+              try {
+                await pushContactsToServer(identity.id, getApiUrl());
+              } catch {}
+            }
             navigation.popToTop();
           },
         },
@@ -184,7 +194,7 @@ export default function ContactInfoScreen() {
         >
           <Feather name="trash-2" size={18} color={Colors.dark.error} />
           <ThemedText style={styles.deleteButtonText}>
-            Delete Conversation
+            Delete Contact and Conversation
           </ThemedText>
         </Pressable>
       </ScrollView>

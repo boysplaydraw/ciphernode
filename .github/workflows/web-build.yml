@@ -2,7 +2,7 @@ name: Web Build
 
 on:
   push:
-    branches: [master]
+    branches: [main]
     tags: ["v*"]
   workflow_dispatch:
 

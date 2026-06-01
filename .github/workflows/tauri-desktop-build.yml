@@ -48,6 +48,14 @@ jobs:
       - name: Build Tauri app
         run: npm run desktop:tauri:build
 
+      - name: Upload web dist
+        if: matrix.platform == 'ubuntu-22.04'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ciphernode-web-dist
+          path: dist/
+          if-no-files-found: error
+
       - name: Upload desktop bundles
         uses: actions/upload-artifact@v4
         with:

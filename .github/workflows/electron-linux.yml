@@ -1,0 +1,108 @@
+name: Electron Linux
+
+on:
+  push:
+    branches: [master]
+    tags: ["v*"]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libarchive-tools rpm flatpak flatpak-builder
+          sudo flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
+
+      - name: Install Flatpak runtimes
+        run: |
+          sudo flatpak install -y --noninteractive flathub \
+            org.freedesktop.Platform//23.08 \
+            org.freedesktop.Sdk//23.08 \
+            org.electronjs.Electron2.BaseApp//23.08
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build Expo web
+        run: npx expo export --platform web --output-dir dist
+
+      - name: Compile Electron (esbuild)
+        run: |
+          npx esbuild electron/main.ts electron/tor-manager.ts electron/onion-share.ts electron/preload.ts \
+            --platform=node \
+            --external:electron \
+            --bundle \
+            --outdir=electron/dist \
+            --format=cjs
+
+      - name: Build Linux packages
+        run: npx electron-builder --config electron/electron-builder.json --linux --x64
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: List build output
+        run: ls -lh dist-electron/
+
+      - name: Upload AppImage artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-appimage
+          path: dist-electron/*.AppImage
+          if-no-files-found: warn
+
+      - name: Upload deb artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-deb
+          path: dist-electron/*.deb
+          if-no-files-found: warn
+
+      - name: Upload rpm artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-rpm
+          path: dist-electron/*.rpm
+          if-no-files-found: warn
+
+      - name: Upload pacman artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-pacman
+          path: dist-electron/*.pkg.tar.zst
+          if-no-files-found: warn
+
+      - name: Upload flatpak artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-flatpak
+          path: dist-electron/*.flatpak
+          if-no-files-found: warn
+
+      - name: Upload to GitHub Release (tag push only)
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          gh release upload "${GITHUB_REF_NAME}" \
+            dist-electron/*.AppImage \
+            dist-electron/*.deb \
+            dist-electron/*.rpm \
+            dist-electron/*.pkg.tar.zst \
+            dist-electron/*.flatpak \
+            --clobber
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

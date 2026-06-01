@@ -1,0 +1,86 @@
+# Learn more https://docs.github.com/en/get-started/getting-started-with-git/ignoring-files
+
+# dependencies
+node_modules/
+
+# Expo
+.expo/
+dist/
+web-build/
+expo-env.d.ts
+
+# Native
+.kotlin/
+*.orig.*
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+
+# Metro
+.metro-health-check*
+
+# debug
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+.web-dev.pid
+
+# local assistant/editor state
+.claude/settings.local.json
+
+# macOS
+.DS_Store
+*.pem
+
+# local env files
+.env*.local
+
+# typescript
+*.tsbuildinfo
+
+# build outputs
+build/
+server_dist/
+static-build/
+dist-electron/
+electron/dist/
+
+# Go test/build cache and temporary files
+.gocache/
+**/.gocache/
+*.test
+*.go.[0-9]*
+
+app-example
+
+# generated native folders
+/ios
+/android
+.env
+
+# Tor binaries (indirilen ikili dosyalar — git'e dahil edilmez)
+tor-bin/windows/tor.exe
+tor-bin/windows/*.dll
+tor-bin/macos-x64/tor
+tor-bin/macos-x64/*.dylib
+tor-bin/macos-arm64/tor
+tor-bin/macos-arm64/*.dylib
+tor-bin/linux/tor
+tor-bin/linux/*.so*
+tor-bin/linux-x64/tor
+tor-bin/linux-x64/*.so*
+tor-bin/linux-arm64/tor
+tor-bin/linux-arm64/*.so*
+
+# Rust / Tauri build output
+target/
+**/target/
+src-tauri/binaries/*
+!src-tauri/binaries/.gitkeep
+
+# legacy/local binary drops
+server-go/*.exe
+tor-bin/macos/tor
+tor-bin/macos/*.dylib

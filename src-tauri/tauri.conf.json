@@ -1,0 +1,23 @@
+{
+  "productName": "CipherNode",
+  "version": "2.0.0",
+  "identifier": "site.cipher.node",
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "externalBin": ["binaries/ciphernode-backend"]
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "CipherNode",
+        "width": 1000,
+        "height": 720,
+        "resizable": true
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  }
+}

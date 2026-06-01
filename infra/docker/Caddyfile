@@ -1,0 +1,11 @@
+{$CADDY_SITE_ADDRESS} {
+  route /api/* {
+    reverse_proxy go-server:5000
+  }
+
+  route /ws {
+    reverse_proxy go-server:5000
+  }
+
+  reverse_proxy web:80
+}

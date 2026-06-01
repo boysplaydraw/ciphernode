@@ -1,0 +1,64 @@
+name: Android APK
+
+on:
+  push:
+    branches: [master]
+    tags: ["v*"]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Setup EAS
+        uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Build APK
+        run: eas build --platform android --profile production --non-interactive
+
+      - name: Download APK from EAS
+        run: |
+          RAW=$(eas build:list --platform android --limit 1 --json --non-interactive 2>/dev/null)
+          JSON="${RAW#*[}"
+          JSON="[${JSON}"
+          APK_URL=$(node -e "const b=JSON.parse(process.argv[1]); console.log(b[0].artifacts?.buildUrl||'')" "$JSON" 2>/dev/null || echo "")
+          echo "APK_URL=$APK_URL" >> $GITHUB_ENV
+          if [ -n "$APK_URL" ]; then
+            curl -L "$APK_URL" -o CipherNode.apk
+            echo "APK_FOUND=true" >> $GITHUB_ENV
+          else
+            echo "APK_FOUND=false" >> $GITHUB_ENV
+          fi
+
+      - name: Upload APK artifact
+        if: env.APK_FOUND == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ciphernode-apk
+          path: CipherNode.apk
+          if-no-files-found: warn
+
+      - name: Upload to GitHub Release (tag push only)
+        if: startsWith(github.ref, 'refs/tags/v') && env.APK_FOUND == 'true'
+        run: gh release upload "${GITHUB_REF_NAME}" CipherNode.apk --clobber
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

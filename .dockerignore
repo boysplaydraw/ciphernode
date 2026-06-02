@@ -44,7 +44,7 @@ unraid
 scripts
 tor-bin
 termux-start.sh
-nginx
+# nginx
 
 # ── Test & Kalite ──────────────────────────────────────────────
 *.test.ts

@@ -12,7 +12,7 @@ ENV CI=1
 
 RUN npx expo export --platform web --output-dir dist
 
-FROM --platform=$BUILDPLATFORM golang:1.22-alpine AS go-builder
+FROM --platform=$BUILDPLATFORM golang:alpine AS go-builder
 
 WORKDIR /src
 
@@ -25,11 +25,12 @@ ARG TARGETOS
 ARG TARGETARCH
 RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -trimpath -ldflags="-s -w" -o /out/ciphernode-server ./cmd/ciphernode-server
 
-FROM alpine:3.20 AS runner
+FROM alpine:latest AS runner
 
 WORKDIR /app
 
-RUN apk add --no-cache ca-certificates && \
+RUN apk update && apk upgrade --no-cache && \
+    apk add --no-cache ca-certificates && \
     addgroup -S ciphernode && \
     adduser -S ciphernode -G ciphernode
 

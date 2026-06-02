@@ -28,7 +28,9 @@ COPY . .
 RUN npx expo export --platform web --output-dir /app/web-dist 2>&1 | tail -5
 
 # ── Aşama 2: Nginx ile servis et ──────────────────────────────
-FROM nginx:1.27-alpine AS runner
+FROM nginx:alpine AS runner
+
+RUN apk update && apk upgrade --no-cache
 
 # Özel nginx yapılandırması
 COPY nginx/docker-web.conf /etc/nginx/conf.d/default.conf

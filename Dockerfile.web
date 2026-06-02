@@ -18,7 +18,7 @@ WORKDIR /app
 
 # Bağımlılıkları önce kopyala (katman cache için)
 COPY package*.json ./
-RUN npm ci
+RUN npm ci --ignore-scripts
 
 # Uygulama kaynak kodunu kopyala
 COPY . .
@@ -38,6 +38,14 @@ COPY --from=builder /app/web-dist /usr/share/nginx/html
 
 # Nginx varsayılan ana sayfasını kaldır
 RUN rm -f /usr/share/nginx/html/50x.html
+
+# Nginx cache directory ve run directory için izinleri ayarla
+RUN mkdir -p /var/cache/nginx /var/run /var/log/nginx && \
+    chown -R nginx:nginx /var/cache/nginx /var/run /var/log/nginx /etc/nginx/conf.d /usr/share/nginx/html && \
+    sed -i -e '/user/!b' -e '/nginx/!b' -e '/nginx/d' /etc/nginx/nginx.conf && \
+    sed -i 's!/var/run/nginx.pid!/var/cache/nginx/nginx.pid!g' /etc/nginx/nginx.conf
+
+USER nginx
 
 EXPOSE 8080
 

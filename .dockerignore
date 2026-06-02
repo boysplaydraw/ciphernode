@@ -7,6 +7,7 @@ yarn-error.log
 dist
 dist-electron
 server_dist
+termux-package*
 
 # ── Ortam dosyaları (güvenlik) ─────────────────────────────────
 .env
@@ -27,9 +28,13 @@ server_dist
 # ── Mobil / Electron (sunucu image'ında gerekmez) ──────────────
 electron
 src-tauri
+apps
+server-go
+server/go
 android
 ios
 attached_assets
+src-
 
 # ── Web & Pazarlama ────────────────────────────────────────────
 # website/ dahil et — sunucu bunu serve ediyor

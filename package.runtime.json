@@ -1,0 +1,11 @@
+{
+  "name": "ciphernode-runtime",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "CipherNode bundled web and relay runtime",
+  "dependencies": {
+    "express": "4.22.2",
+    "socket.io": "4.8.3"
+  }
+}

@@ -1,12 +1,14 @@
 # CipherNode
 
-**Uçtan uca şifreli, Tor destekli, iz bırakmayan mesajlaşma relay sunucusu.**
+**Uçtan uca şifreli, Tor destekli, iz bırakmayan mesajlaşma. Tek Docker imajında web arayüzü + relay server.**
 
 - OpenPGP RSA-4096 şifreleme
 - Tor / .onion desteği
 - Sıfır log — mesajlar RAM'de tutulur, iletimden sonra silinir
+- Tek paket: `/app` web arayüzü ve aynı container içinde API/WebSocket relay
 - Otomatik SSL (Let's Encrypt veya self-signed)
 - P2P mesh ağı (Nostr + WebRTC)
+- Android terminal emulatoru Termux için rootsuz paket desteği
 
 🌐 [cipher-node.site](https://cipher-node.site) &nbsp;·&nbsp; ⭐ [GitHub](https://github.com/boysplaydraw/ciphernode)
 
@@ -16,12 +18,13 @@
 
 ```bash
 docker run -d \
+  --name ciphernode \
   -p 443:443 -p 80:80 -p 5000:5000 \
   --restart unless-stopped \
   mero003/ciphernode:latest
 ```
 
-Otomatik self-signed SSL üretilir. Tarayıcıdan `https://sunucu-ip/app` ile bağlanabilirsiniz.
+Tarayıcıdan `http://sunucu-ip:5000/app` veya HTTPS açıksa `https://sunucu-ip/app` ile bağlanabilirsiniz.
 
 ## Domain + Let's Encrypt
 
@@ -42,6 +45,31 @@ curl -O https://raw.githubusercontent.com/boysplaydraw/ciphernode/master/docker-
 docker compose up -d
 ```
 
+## Termux Android Terminal Emulator + HTTPS Tunnel
+
+```bash
+curl -LO https://github.com/boysplaydraw/ciphernode/releases/latest/download/ciphernode-termux.tar.gz
+tar -xzf ciphernode-termux.tar.gz
+cd ciphernode-termux
+bash termux-start.sh
+```
+
+Termux bir Android terminal emulatorudur; root gerekmez. Varsayılan port `5000`: `http://telefon-ip:5000/app`.
+
+HTTPS gerekiyorsa:
+
+```bash
+bash termux-start.sh cloudflare
+```
+
+Script `https://...trycloudflare.com/app` adresi üretir.
+
+## Legal
+
+- Privacy Policy: https://cipher-node.site/privacy
+- Terms of Service: https://cipher-node.site/terms
+- License: GPLv3
+
 ## Ortam Değişkenleri
 
 | Değişken | Varsayılan | Açıklama |
@@ -54,6 +82,7 @@ docker compose up -d
 | `MESSAGE_TTL_MS` | `86400000` | Mesaj yaşam süresi (ms) |
 | `MAX_FILE_SIZE_MB` | `100` | Maks. dosya boyutu |
 | `TOR_ENABLED` | `false` | Tor Hidden Service |
+| `ONION_ADDRESS` | — | Harici Tor hidden service adresi |
 
 ## İstemci Uygulamaları
 

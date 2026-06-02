@@ -15,6 +15,10 @@ services:
       ONION_ADDRESS: "${ONION_ADDRESS:-}"
     ports:
       - "5000:5000"
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
 
   web:
     build:
@@ -28,6 +32,10 @@ services:
       EXPO_PUBLIC_RELAY_TRANSPORT: "${EXPO_PUBLIC_RELAY_TRANSPORT:-websocket}"
     ports:
       - "8080:80"
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     depends_on:
       - go-server
 

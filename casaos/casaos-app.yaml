@@ -69,7 +69,7 @@ services:
       PORT:        5000
       HOST:        0.0.0.0
 
-      DATABASE_URL: postgresql://ciphernode:${DB_PASSWORD:-ciphernode_secret}@db:5432/ciphernode
+      DATABASE_URL: postgresql://ciphernode:${DB_PASSWORD}@db:5432/ciphernode
 
       HTTPS: "false"
 
@@ -132,7 +132,7 @@ services:
     environment:
       POSTGRES_DB:       ciphernode
       POSTGRES_USER:     ciphernode
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-ciphernode_secret}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD environment variable is required}
 
     volumes:
       - /DATA/AppData/ciphernode/db:/var/lib/postgresql/data

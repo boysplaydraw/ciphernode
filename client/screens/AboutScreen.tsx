@@ -138,12 +138,19 @@ export default function AboutScreen() {
     noLogServers:
       language === "tr" ? "Kayıt tutmayan sunucular" : "No-log relay servers",
     selfHostable:
-      language === "tr" ? "Kendi barındırılabilir" : "Self-hostable",
+      language === "tr"
+        ? "Docker ve Termux ile kendi sunucunu çalıştır"
+        : "Run your own server with Docker and Termux",
     openSource:
       language === "tr" ? "Açık kaynak (GPLv3)" : "Open source (GPLv3)",
     links: language === "tr" ? "Bağlantılar" : "Links",
     sourceCode: language === "tr" ? "Kaynak Kodu" : "Source Code",
     documentation: language === "tr" ? "Dokümantasyon" : "Documentation",
+    dockerHub: "Docker Hub",
+    termuxPackage:
+      language === "tr"
+        ? "Termux Android Terminal Paketi"
+        : "Termux Android Terminal Package",
     reportIssue: language === "tr" ? "Sorun Bildir" : "Report Issue",
     legal: language === "tr" ? "Yasal" : "Legal",
     privacyPolicy: language === "tr" ? "Gizlilik Politikası" : "Privacy Policy",
@@ -280,14 +287,40 @@ export default function AboutScreen() {
               url="https://github.com/boysplaydraw/ciphernode"
             />
             <LinkRow
-              icon="file-text"
-              title={t.license}
-              url="https://www.gnu.org/licenses/gpl-3.0.html"
-            />
-            <LinkRow
               icon="book"
               title={t.documentation}
               url="https://github.com/boysplaydraw/ciphernode#readme"
+            />
+            <LinkRow
+              icon="box"
+              title={t.dockerHub}
+              url="https://hub.docker.com/r/mero003/ciphernode"
+            />
+            <LinkRow
+              icon="smartphone"
+              title={t.termuxPackage}
+              url="https://github.com/boysplaydraw/ciphernode/blob/master/TERMUX.md"
+            />
+          </View>
+        </View>
+
+        <View style={styles.section}>
+          <ThemedText style={styles.sectionTitle}>{t.legal}</ThemedText>
+          <View style={styles.linksCard}>
+            <LinkRow
+              icon="shield"
+              title={t.privacyPolicy}
+              url="https://cipher-node.site/privacy"
+            />
+            <LinkRow
+              icon="file-text"
+              title={t.termsOfService}
+              url="https://cipher-node.site/terms"
+            />
+            <LinkRow
+              icon="award"
+              title={t.license}
+              url="https://www.gnu.org/licenses/gpl-3.0.html"
             />
           </View>
         </View>
@@ -299,6 +332,12 @@ export default function AboutScreen() {
             <ThemedText style={styles.techItem}>OpenPGP.js (E2EE)</ThemedText>
             <ThemedText style={styles.techItem}>Socket.io (Relay)</ThemedText>
             <ThemedText style={styles.techItem}>WebRTC (P2P)</ThemedText>
+            <ThemedText style={styles.techItem}>
+              Docker single image: web + server
+            </ThemedText>
+            <ThemedText style={styles.techItem}>
+              Termux Android terminal runtime
+            </ThemedText>
           </View>
         </View>
 

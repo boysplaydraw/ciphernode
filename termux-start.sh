@@ -1,225 +1,199 @@
 #!/data/data/com.termux/files/usr/bin/bash
-# ============================================================
-# CipherNode Relay — Termux Başlatma Scripti
-# Kullanım: bash termux-start.sh [mod]
-#   mod: server (varsayılan), tor, ngrok, cloudflare
-#
-# GitHub : https://github.com/boysplaydraw/ciphernode
-# Site   : https://boysplaydraw.github.io/ciphernode
-# ============================================================
-
 set -e
 
 MODE="${1:-server}"
 PORT="${PORT:-5000}"
+APP_DIR="${APP_DIR:-$PWD}"
 
-echo "[CipherNode] Termux ortamı hazırlanıyor..."
+echo "[CipherNode] Termux rootless runtime"
 
-# ── Gerekli paketleri kur ───────────────────────────────────
-if ! command -v node &>/dev/null; then
-  echo "[CipherNode] Node.js kuruluyor..."
-  pkg install -y nodejs
+if [ "$(id -u)" = "0" ]; then
+  echo "[CipherNode] Root kullanmayin. Termux normal kullanici ile calismali."
+  exit 1
 fi
 
-# ── Bağımlılıkları kur ─────────────────────────────────────
-if [ ! -d "node_modules" ]; then
-  echo "[CipherNode] Bağımlılıklar kuruluyor..."
-  npm install
+ensure_pkg() {
+  if ! command -v "$1" >/dev/null 2>&1; then
+    pkg install -y "$2"
+  fi
+}
+
+ensure_pkg node nodejs
+ensure_pkg npm nodejs
+ensure_pkg openssl openssl
+ensure_pkg curl curl
+
+cd "$APP_DIR"
+
+if [ -f package.runtime.json ] && [ ! -f package.json ]; then
+  cp package.runtime.json package.json
 fi
 
-# ── Sunucuyu derle ─────────────────────────────────────────
-if [ ! -d "server_dist" ]; then
-  echo "[CipherNode] Sunucu derleniyor..."
-  npm run server:build
+if [ ! -d node_modules ]; then
+  echo "[CipherNode] Runtime bagimliliklari kuruluyor..."
+  npm install --omit=dev --ignore-scripts --no-audit --no-fund
+fi
+
+if [ ! -f server_dist/index.mjs ]; then
+  echo "[CipherNode] server_dist/index.mjs bulunamadi."
+  echo "Kaynak repodaysaniz once: npm ci --ignore-scripts && npm run server:build"
+  echo "Onerilen: scripts/build-termux-package.ps1 ile uretilen ciphernode-termux paketini kullanin."
+  exit 1
 fi
 
 export NODE_ENV=production
-export HOST=0.0.0.0
-export PORT=$PORT
+export HTTPS=false
+export HOST="${HOST:-0.0.0.0}"
+export PORT="$PORT"
 
-# LAN IP
-LOCAL_IP=$(ip route get 1 2>/dev/null | awk '{print $7; exit}' \
-  || hostname -I 2>/dev/null | awk '{print $1}' \
-  || echo "")
+LOCAL_IP="$(ip route get 1 2>/dev/null | awk '{print $7; exit}' || echo '')"
 
-# ── Mod seçimi ─────────────────────────────────────────────
+run_server_background() {
+  HOST=127.0.0.1 node server_dist/index.mjs &
+  SERVER_PID=$!
+  sleep 2
+}
+
+start_server() {
+  echo ""
+  echo "=========================================="
+  echo " CipherNode Termux"
+  echo "=========================================="
+  echo " Local : http://localhost:$PORT"
+  [ -n "$LOCAL_IP" ] && echo " LAN   : http://$LOCAL_IP:$PORT"
+  echo " Web   : http://localhost:$PORT/app"
+  echo " HTTPS : bash termux-start.sh cloudflare"
+  echo " Root  : gerekmez; 80/443 yerine $PORT kullanilir"
+  echo "=========================================="
+  echo ""
+  exec node server_dist/index.mjs
+}
+
 case "$MODE" in
-
-  # ── Sadece sunucu (LAN erişimi) ──────────────────────────
   server)
-    echo ""
-    echo "=========================================="
-    echo " CipherNode Relay — Sadece LAN"
-    echo "=========================================="
-    echo " Lokal : http://localhost:$PORT"
-    [ -n "$LOCAL_IP" ] && echo " LAN   : http://$LOCAL_IP:$PORT"
-    echo ""
-    echo " Dışarıdan erişim için:"
-    echo "   bash termux-start.sh tor        (Tor hidden service)"
-    echo "   bash termux-start.sh ngrok      (ngrok tünel)"
-    echo "   bash termux-start.sh cloudflare (Cloudflare Tunnel)"
-    echo "=========================================="
-    echo ""
-    if [ -f "server_dist/index.mjs" ]; then
-      node server_dist/index.mjs
-    else
-      node server_dist/index.js
-    fi
+    start_server
     ;;
 
-  # ── Tor Hidden Service ────────────────────────────────────
-  tor)
-    if ! command -v tor &>/dev/null; then
-      echo "[tor] Tor kuruluyor..."
-      pkg install -y tor
+  cloudflare|cloudflared|https|tunnel)
+    if ! command -v cloudflared >/dev/null 2>&1; then
+      echo "[cloudflared] Kurulum deneniyor..."
+      pkg install -y cloudflared || true
     fi
 
-    TOR_DIR="$HOME/.tor/ciphernode"
-    TORRC="$PREFIX/etc/tor/torrc"
-    mkdir -p "$TOR_DIR"
-    chmod 700 "$TOR_DIR"
-
-    # torrc'ye hidden service bloğu ekle
-    if ! grep -q "HiddenServiceDir $TOR_DIR" "$TORRC" 2>/dev/null; then
-      echo "" >> "$TORRC"
-      echo "# CipherNode" >> "$TORRC"
-      echo "HiddenServiceDir $TOR_DIR" >> "$TORRC"
-      echo "HiddenServicePort 80 127.0.0.1:$PORT" >> "$TORRC"
-    fi
-
-    # Sunucuyu lokal başlat (Tor üzerinden dışarı açık)
-    if [ -f "server_dist/index.mjs" ]; then
-      HOST=127.0.0.1 node server_dist/index.mjs &
-    else
-      HOST=127.0.0.1 node server_dist/index.js &
-    fi
-    SERVER_PID=$!
-    sleep 2
-
-    echo "[tor] Tor başlatılıyor..."
-    tor -f "$TORRC" --quiet &
-    TOR_PID=$!
-
-    # .onion adresini bekle
-    for i in $(seq 1 30); do
-      [ -f "$TOR_DIR/hostname" ] && break
-      sleep 1
-      echo -n "."
-    done
-    echo ""
-
-    ONION=$(cat "$TOR_DIR/hostname" 2>/dev/null || echo "henüz alınamadı")
-
-    echo ""
-    echo "=========================================="
-    echo " CipherNode + Tor Hidden Service"
-    echo "=========================================="
-    echo " .onion : http://$ONION"
-    echo ""
-    echo " Uygulamada:"
-    echo "   Orbot'u açın → VPN modu aktif edin"
-    echo "   Ayarlar → Tor'u Etkinleştir"
-    echo "   Ağ Ayarları → Özel Sunucu: http://$ONION"
-    echo "=========================================="
-    echo " Ctrl+C ile durdur"
-    echo ""
-
-    trap "kill $SERVER_PID $TOR_PID 2>/dev/null; exit 0" INT TERM
-    wait $SERVER_PID
-    ;;
-
-  # ── ngrok tünel ───────────────────────────────────────────
-  ngrok)
-    if ! command -v ngrok &>/dev/null; then
-      echo "[ngrok] ngrok kuruluyor (ARM64)..."
-      ARCH=$(uname -m)
+    if ! command -v cloudflared >/dev/null 2>&1; then
+      ARCH="$(uname -m)"
       case "$ARCH" in
-        aarch64) NGROK_BIN="cloudflared-linux-arm64" ;;
-        armv7l)  NGROK_BIN="cloudflared-linux-arm" ;;
-        x86_64)  NGROK_BIN="cloudflared-linux-amd64" ;;
+        aarch64) CF_URL="https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-arm64" ;;
+        armv7l|armv8l) CF_URL="https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-arm" ;;
+        x86_64) CF_URL="https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64" ;;
         *) echo "Desteklenmeyen mimari: $ARCH"; exit 1 ;;
       esac
-      curl -sSL "https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-linux-${ARCH/aarch64/arm64}.tgz" | tar xz
-      mv ngrok "$PREFIX/bin/"
-    fi
-
-    # Sunucuyu başlat
-    if [ -f "server_dist/index.mjs" ]; then
-      node server_dist/index.mjs &
-    else
-      node server_dist/index.js &
-    fi
-    SERVER_PID=$!
-    sleep 2
-
-    echo "[ngrok] Tünel açılıyor..."
-    ngrok http "$PORT" &
-    NGROK_PID=$!
-    sleep 3
-
-    TUNNEL=$(curl -s http://localhost:4040/api/tunnels 2>/dev/null \
-      | grep -o '"public_url":"[^"]*"' | grep https | head -1 | cut -d'"' -f4)
-
-    echo ""
-    echo "=========================================="
-    echo " CipherNode + ngrok"
-    echo "=========================================="
-    [ -n "$TUNNEL" ] && echo " URL: $TUNNEL" || echo " URL: http://localhost:4040 adresine bakın"
-    echo "=========================================="
-    echo ""
-
-    trap "kill $SERVER_PID $NGROK_PID 2>/dev/null; exit 0" INT TERM
-    wait $NGROK_PID
-    ;;
-
-  # ── Cloudflare Tunnel ─────────────────────────────────────
-  cloudflare)
-    if ! command -v cloudflared &>/dev/null; then
-      echo "[cloudflare] cloudflared kuruluyor..."
-      ARCH=$(uname -m)
-      case "$ARCH" in
-        aarch64) BIN_URL="https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-arm64" ;;
-        armv7l)  BIN_URL="https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-arm" ;;
-        x86_64)  BIN_URL="https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64" ;;
-        *) echo "Desteklenmeyen mimari: $ARCH"; exit 1 ;;
-      esac
-      curl -sSL "$BIN_URL" -o "$PREFIX/bin/cloudflared"
+      curl -L "$CF_URL" -o "$PREFIX/bin/cloudflared"
       chmod +x "$PREFIX/bin/cloudflared"
     fi
 
-    if [ -f "server_dist/index.mjs" ]; then
-      node server_dist/index.mjs &
-    else
-      node server_dist/index.js &
-    fi
-    SERVER_PID=$!
-    sleep 2
+    run_server_background
 
-    echo "[cloudflare] Tünel açılıyor..."
-    cloudflared tunnel --url "http://localhost:$PORT" 2>&1 | tee /tmp/cf.log &
-    CF_PID=$!
+    LOG_FILE="$HOME/.ciphernode-cloudflared.log"
+    rm -f "$LOG_FILE"
+    echo "[cloudflared] HTTPS tunnel aciliyor..."
+    cloudflared tunnel --url "http://127.0.0.1:$PORT" --no-autoupdate >"$LOG_FILE" 2>&1 &
+    TUNNEL_PID=$!
 
-    for i in $(seq 1 15); do
-      CF_URL=$(grep -o 'https://[a-z0-9-]*\.trycloudflare\.com' /tmp/cf.log 2>/dev/null | head -1)
-      [ -n "$CF_URL" ] && break
+    CF_PUBLIC_URL=""
+    for _ in $(seq 1 45); do
+      CF_PUBLIC_URL="$(grep -o 'https://[a-zA-Z0-9.-]*\.trycloudflare\.com' "$LOG_FILE" 2>/dev/null | head -1 || true)"
+      [ -n "$CF_PUBLIC_URL" ] && break
       sleep 1
     done
 
     echo ""
     echo "=========================================="
-    echo " CipherNode + Cloudflare Tunnel"
+    echo " CipherNode Termux + Cloudflare HTTPS"
     echo "=========================================="
-    [ -n "$CF_URL" ] && echo " URL: $CF_URL" || echo " URL: /tmp/cf.log dosyasına bakın"
+    [ -n "$CF_PUBLIC_URL" ] && echo " HTTPS : $CF_PUBLIC_URL/app" || echo " HTTPS : henuz bulunamadi; log: $LOG_FILE"
+    echo " Local : http://localhost:$PORT/app"
     echo "=========================================="
     echo ""
 
-    trap "kill $SERVER_PID $CF_PID 2>/dev/null; exit 0" INT TERM
-    wait $CF_PID
+    trap 'kill "$SERVER_PID" "$TUNNEL_PID" 2>/dev/null || true; exit 0' INT TERM
+    wait "$TUNNEL_PID"
+    ;;
+
+  localtunnel|lt)
+    ensure_pkg npx nodejs
+    run_server_background
+
+    LOG_FILE="$HOME/.ciphernode-localtunnel.log"
+    rm -f "$LOG_FILE"
+    echo "[localtunnel] HTTPS tunnel aciliyor..."
+    npx --yes localtunnel --port "$PORT" --local-host 127.0.0.1 >"$LOG_FILE" 2>&1 &
+    TUNNEL_PID=$!
+
+    LT_PUBLIC_URL=""
+    for _ in $(seq 1 45); do
+      LT_PUBLIC_URL="$(grep -o 'https://[a-zA-Z0-9.-]*\.loca\.lt' "$LOG_FILE" 2>/dev/null | head -1 || true)"
+      [ -n "$LT_PUBLIC_URL" ] && break
+      sleep 1
+    done
+
+    echo ""
+    echo "=========================================="
+    echo " CipherNode Termux + LocalTunnel HTTPS"
+    echo "=========================================="
+    [ -n "$LT_PUBLIC_URL" ] && echo " HTTPS : $LT_PUBLIC_URL/app" || echo " HTTPS : henuz bulunamadi; log: $LOG_FILE"
+    echo " Local : http://localhost:$PORT/app"
+    echo "=========================================="
+    echo ""
+
+    trap 'kill "$SERVER_PID" "$TUNNEL_PID" 2>/dev/null || true; exit 0' INT TERM
+    wait "$TUNNEL_PID"
+    ;;
+
+  tor)
+    ensure_pkg tor tor
+
+    TOR_BASE="$HOME/.ciphernode/tor"
+    TOR_DATA="$TOR_BASE/data"
+    HS_DIR="$TOR_BASE/hidden_service"
+    TORRC="$TOR_BASE/torrc"
+    mkdir -p "$TOR_DATA" "$HS_DIR"
+    chmod 700 "$HS_DIR"
+
+    cat > "$TORRC" <<EOF
+DataDirectory $TOR_DATA
+SocksPort 127.0.0.1:9050
+HiddenServiceDir $HS_DIR
+HiddenServicePort 80 127.0.0.1:$PORT
+Log notice stdout
+EOF
+
+    run_server_background
+
+    tor -f "$TORRC" &
+    TOR_PID=$!
+
+    for _ in $(seq 1 60); do
+      [ -f "$HS_DIR/hostname" ] && break
+      sleep 1
+    done
+
+    ONION="$(cat "$HS_DIR/hostname" 2>/dev/null || true)"
+    echo ""
+    echo "=========================================="
+    echo " CipherNode Termux + Tor"
+    echo "=========================================="
+    [ -n "$ONION" ] && echo " Onion : http://$ONION" || echo " Onion : henuz hazir degil"
+    echo " Local : http://localhost:$PORT/app"
+    echo "=========================================="
+    echo ""
+
+    trap 'kill "$SERVER_PID" "$TOR_PID" 2>/dev/null || true; exit 0' INT TERM
+    wait "$SERVER_PID"
     ;;
 
   *)
-    echo "Bilinmeyen mod: $MODE"
-    echo "Kullanım: bash termux-start.sh [server|tor|ngrok|cloudflare]"
+    echo "Kullanim: bash termux-start.sh [server|cloudflare|localtunnel|tor]"
     exit 1
     ;;
 esac

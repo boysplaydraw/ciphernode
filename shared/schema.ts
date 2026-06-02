@@ -8,7 +8,7 @@ export const users = pgTable("users", {
     .primaryKey()
     .default(sql`gen_random_uuid()`),
   username: text("username").notNull().unique(),
-  password: text("password").notNull(),
+  password: text("password").notNull(), // Hashed with argon2 before insertion
 });
 
 export const insertUserSchema = createInsertSchema(users).pick({

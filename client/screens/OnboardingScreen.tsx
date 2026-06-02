@@ -27,8 +27,16 @@ import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { ThemedText } from "@/components/ThemedText";
 import { Colors, Spacing, BorderRadius, Fonts } from "@/constants/theme";
-import { setOnboardingComplete, updateTorSettings } from "@/lib/storage";
+import {
+  setOnboardingComplete,
+  updateSettings,
+  updateTorSettings,
+} from "@/lib/storage";
 import { getOrCreateIdentity, updateDisplayName } from "@/lib/crypto";
+import {
+  getOfficialServerUrl,
+  setCustomServerUrl,
+} from "@/lib/query-client";
 import { useLanguage } from "@/constants/language";
 import {
   isElectron,
@@ -38,6 +46,7 @@ import {
 } from "@/lib/electron-bridge";
 
 type ConnectionMode = "clearnet" | "tor";
+type ServerType = "official" | "custom";
 
 interface OnboardingScreenProps {
   onComplete: () => void;
@@ -58,15 +67,25 @@ export default function OnboardingScreen({
   const [displayNameInput, setDisplayNameInput] = useState("");
   const [connectionMode, setConnectionMode] =
     useState<ConnectionMode>("clearnet");
+  const [serverType, setServerType] = useState<ServerType>("official");
+  const [customServerUrl, setCustomServerUrlInput] = useState("");
+  const [serverTesting, setServerTesting] = useState(false);
+  const [serverTestResult, setServerTestResult] = useState<
+    "idle" | "ok" | "fail"
+  >("idle");
   const [checkingTor, setCheckingTor] = useState(false);
   const [torCheckResult, setTorCheckResult] = useState<
     "idle" | "checking" | "ok" | "fail"
   >("idle");
 
-  // 3 adet progress dot için ayrı shared values (hooks kuralı: koşullu çağrılmaz)
+  const officialServerUrl = getOfficialServerUrl();
+  const hasOfficialServer = !!officialServerUrl;
+
+  // Progress dot shared values (hooks rule: no conditional calls)
   const dot0 = useSharedValue(true);
   const dot1 = useSharedValue(false);
   const dot2 = useSharedValue(false);
+  const dot3 = useSharedValue(false);
 
   const dot0Style = useAnimatedStyle(() => ({
     width: withTiming(dot0.value ? 24 : 8, { duration: 300 }),
@@ -80,17 +99,22 @@ export default function OnboardingScreen({
     width: withTiming(dot2.value ? 24 : 8, { duration: 300 }),
     opacity: withTiming(dot2.value ? 1 : 0.35, { duration: 300 }),
   }));
+  const dot3Style = useAnimatedStyle(() => ({
+    width: withTiming(dot3.value ? 24 : 8, { duration: 300 }),
+    opacity: withTiming(dot3.value ? 1 : 0.35, { duration: 300 }),
+  }));
 
-  const dotStyles = [dot0Style, dot1Style, dot2Style];
+  const dotStyles = [dot0Style, dot1Style, dot2Style, dot3Style];
 
   const goToStep = useCallback(
     (s: number) => {
       dot0.value = s === 0;
       dot1.value = s === 1;
       dot2.value = s === 2;
+      dot3.value = s === 3;
       setStep(s);
     },
-    [dot0, dot1, dot2],
+    [dot0, dot1, dot2, dot3],
   );
 
   // Adım 1'e ilk geçişte kimlik üret
@@ -141,6 +165,106 @@ export default function OnboardingScreen({
   const handleBack = () => {
     haptic();
     goToStep(step - 1);
+  };
+
+  const getSelectedServerUrl = () => {
+    if (serverType === "custom") return customServerUrl.trim();
+    return officialServerUrl || "";
+  };
+
+  const normalizeRelayUrl = (value: string) => {
+    try {
+      const url = new URL(value.trim());
+      const allowedProtocol = url.protocol === "http:" || url.protocol === "https:";
+      const hasCredentials = !!url.username || !!url.password;
+      if (!allowedProtocol || hasCredentials) return null;
+      url.hash = "";
+      return url.toString().replace(/\/$/, "");
+    } catch {
+      return null;
+    }
+  };
+
+  const persistServerChoice = useCallback(async () => {
+    if (serverType === "official") {
+      await updateSettings({ serverUrl: "" });
+      setCustomServerUrl(null);
+      return true;
+    }
+
+    const url = customServerUrl.trim();
+    if (!url) {
+      Alert.alert(
+        isTr ? "Sunucu gerekli" : "Server required",
+        isTr
+          ? "Kendi sunucunu kullanmak icin relay adresini gir."
+          : "Enter a relay address to use your own server.",
+      );
+      return false;
+    }
+
+    const normalizedUrl = normalizeRelayUrl(url);
+    if (!normalizedUrl) {
+      Alert.alert(
+        isTr ? "Gecersiz URL" : "Invalid URL",
+        isTr
+          ? "Sadece http:// veya https:// relay adresi gir. Kullanici adi/sifre iceren URL kullanma."
+          : "Use only an http:// or https:// relay address. Do not include username/password credentials.",
+      );
+      return false;
+    }
+
+    await updateSettings({ serverUrl: normalizedUrl });
+    setCustomServerUrl(normalizedUrl);
+    return true;
+  }, [customServerUrl, isTr, serverType]);
+
+  const handleServerNext = async () => {
+    haptic();
+    const saved = await persistServerChoice();
+    if (saved) goToStep(3);
+  };
+
+  const handleTestServer = async () => {
+    const targetUrl = getSelectedServerUrl();
+    if (!targetUrl) {
+      Alert.alert(
+        isTr ? "Sunucu yok" : "No server",
+        isTr
+          ? "Bu build icin varsayilan sunucu yok. Kendi sunucu adresini gir."
+          : "This build has no default server. Enter your own server address.",
+      );
+      return;
+    }
+
+    const normalizedTargetUrl = normalizeRelayUrl(targetUrl);
+    if (!normalizedTargetUrl) {
+      Alert.alert(
+        isTr ? "Gecersiz URL" : "Invalid URL",
+        isTr
+          ? "Sadece http:// veya https:// relay adresi kullan."
+          : "Use only an http:// or https:// relay address.",
+      );
+      return;
+    }
+
+    setServerTesting(true);
+    setServerTestResult("idle");
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 6000);
+      const response = await fetch(
+        new URL("/api/health", normalizedTargetUrl).toString(),
+        { signal: controller.signal },
+      );
+      clearTimeout(timeoutId);
+      const data = await response.json().catch(() => null);
+      setServerTestResult(response.ok && data?.status === "ok" ? "ok" : "fail");
+    } catch {
+      setServerTestResult("fail");
+    } finally {
+      setServerTesting(false);
+    }
   };
 
   const doFinish = useCallback(
@@ -221,6 +345,9 @@ export default function OnboardingScreen({
 
   const handleFinish = async () => {
     haptic();
+    const saved = await persistServerChoice();
+    if (!saved) return;
+
     if (displayNameInput.trim()) {
       await updateDisplayName(displayNameInput.trim());
     }
@@ -382,6 +509,37 @@ export default function OnboardingScreen({
         : "Full anonymity. 3-layer encryption. IP hidden. Requires Orbot.",
       badge: isTr ? "Önerilen" : "Recommended",
       badgeColor: Colors.dark.success,
+    },
+  ];
+
+  const servers: {
+    id: ServerType;
+    icon: keyof typeof Feather.glyphMap;
+    title: string;
+    desc: string;
+    url: string;
+    disabled?: boolean;
+  }[] = [
+    {
+      id: "official",
+      icon: "zap",
+      title: isTr ? "Hazir CipherNode Relay" : "Ready CipherNode Relay",
+      desc: isTr
+        ? "Hemen baslamak icin resmi relay sunucusunu kullan."
+        : "Use the official relay server to start immediately.",
+      url:
+        officialServerUrl ||
+        (isTr ? "Bu build icin ayarlanmadi" : "Not configured in this build"),
+      disabled: !hasOfficialServer,
+    },
+    {
+      id: "custom",
+      icon: "server",
+      title: isTr ? "Kendi Sunucum" : "My Own Server",
+      desc: isTr
+        ? "Docker, VPS, Termux veya .onion relay adresini kullan."
+        : "Use a Docker, VPS, Termux, or .onion relay address.",
+      url: customServerUrl || "https://relay.example.com",
     },
   ];
 
@@ -556,8 +714,201 @@ export default function OnboardingScreen({
         </ScrollView>
       )}
 
-      {/* ── ADIM 2: Bağlantı Modu ── */}
+      {/* ── ADIM 2: Sunucu Seçimi ── */}
       {step === 2 && (
+        <ScrollView
+          contentContainerStyle={styles.stepContent}
+          showsVerticalScrollIndicator={false}
+        >
+          <ThemedText style={styles.stepTitle}>
+            {isTr ? "Sunucu Secimi" : "Server Choice"}
+          </ThemedText>
+          <ThemedText style={styles.stepDesc}>
+            {isTr
+              ? "Hazir relay ile basla veya kendi sunucunu bagla. Bunu ayarlardan daha sonra degistirebilirsin."
+              : "Start with the ready relay or connect your own server. You can change this later in settings."}
+          </ThemedText>
+
+          <View style={styles.modeList}>
+            {servers.map(({ id, icon, title, desc, url, disabled }) => (
+              <Pressable
+                key={id}
+                onPress={() => {
+                  if (!disabled) {
+                    setServerType(id);
+                    setServerTestResult("idle");
+                  }
+                }}
+                style={[
+                  styles.modeCard,
+                  serverType === id && !disabled && styles.modeCardSelected,
+                  disabled && styles.modeCardDisabled,
+                ]}
+              >
+                <View
+                  style={[
+                    styles.modeIcon,
+                    serverType === id && !disabled && styles.modeIconSelected,
+                  ]}
+                >
+                  <Feather
+                    name={icon}
+                    size={20}
+                    color={
+                      serverType === id && !disabled
+                        ? Colors.dark.primary
+                        : Colors.dark.textSecondary
+                    }
+                  />
+                </View>
+                <View style={styles.modeContent}>
+                  <View style={styles.modeTitleRow}>
+                    <ThemedText
+                      style={[
+                        styles.modeTitle,
+                        serverType === id &&
+                          !disabled &&
+                          styles.modeTitleSelected,
+                      ]}
+                    >
+                      {title}
+                    </ThemedText>
+                  </View>
+                  <ThemedText style={styles.modeDesc}>{desc}</ThemedText>
+                  <ThemedText style={styles.serverUrlPreview} numberOfLines={1}>
+                    {url}
+                  </ThemedText>
+                </View>
+                {serverType === id && !disabled && (
+                  <View style={styles.modeCheck}>
+                    <Feather name="check" size={14} color="#fff" />
+                  </View>
+                )}
+              </Pressable>
+            ))}
+          </View>
+
+          {serverType === "custom" && (
+            <View style={styles.inputWrap}>
+              <ThemedText style={styles.inputLabel}>RELAY URL</ThemedText>
+              <TextInput
+                style={styles.input}
+                value={customServerUrl}
+                onChangeText={(value) => {
+                  setCustomServerUrlInput(value);
+                  setServerTestResult("idle");
+                }}
+                placeholder="https://relay.domain.com"
+                placeholderTextColor={Colors.dark.textDisabled}
+                autoCapitalize="none"
+                autoCorrect={false}
+                keyboardType="url"
+              />
+              <ThemedText style={styles.inputHint}>
+                {isTr
+                  ? "Sunucuda /api/health ve Socket.IO/WebSocket erisilebilir olmali."
+                  : "The server must expose /api/health and Socket.IO/WebSocket."}
+              </ThemedText>
+            </View>
+          )}
+
+          <View
+            style={[
+              styles.serverStatus,
+              serverTestResult === "ok" && styles.serverStatusOk,
+              serverTestResult === "fail" && styles.serverStatusFail,
+            ]}
+          >
+            {serverTesting ? (
+              <ActivityIndicator size="small" color={Colors.dark.primary} />
+            ) : (
+              <Feather
+                name={
+                  serverTestResult === "ok"
+                    ? "check-circle"
+                    : serverTestResult === "fail"
+                      ? "alert-circle"
+                      : "wifi"
+                }
+                size={14}
+                color={
+                  serverTestResult === "ok"
+                    ? Colors.dark.success
+                    : serverTestResult === "fail"
+                      ? Colors.dark.warning
+                      : Colors.dark.textSecondary
+                }
+              />
+            )}
+            <ThemedText
+              style={[
+                styles.serverStatusText,
+                serverTestResult === "ok" && { color: Colors.dark.success },
+                serverTestResult === "fail" && { color: Colors.dark.warning },
+              ]}
+            >
+              {serverTesting
+                ? isTr
+                  ? "Sunucu test ediliyor..."
+                  : "Testing server..."
+                : serverTestResult === "ok"
+                  ? isTr
+                    ? "Sunucu erisilebilir."
+                    : "Server is reachable."
+                  : serverTestResult === "fail"
+                    ? isTr
+                      ? "Sunucuya ulasilamadi. Yine de kaydedip devam edebilirsin."
+                      : "Server could not be reached. You can still save and continue."
+                    : isTr
+                      ? "Istersen devam etmeden once baglantiyi test et."
+                      : "You can test the connection before continuing."}
+            </ThemedText>
+          </View>
+
+          <View style={styles.btnRow}>
+            <Pressable onPress={handleBack} style={styles.btnSecondary}>
+              <ThemedText style={styles.btnSecondaryText}>
+                {isTr ? "Geri" : "Back"}
+              </ThemedText>
+            </Pressable>
+            <Pressable
+              onPress={handleTestServer}
+              disabled={serverTesting}
+              style={[styles.btnSecondary, serverTesting && { opacity: 0.4 }]}
+            >
+              <ThemedText style={styles.btnSecondaryText}>Test</ThemedText>
+            </Pressable>
+            <Pressable
+              onPress={handleServerNext}
+              disabled={
+                serverTesting || (serverType === "official" && !hasOfficialServer)
+              }
+              style={({ pressed }) => [
+                styles.btnFlex,
+                (serverTesting ||
+                  (serverType === "official" && !hasOfficialServer)) &&
+                  styles.btnDisabled,
+                pressed &&
+                  !serverTesting &&
+                  !(serverType === "official" && !hasOfficialServer) &&
+                  styles.btnPressed,
+              ]}
+            >
+              <ThemedText style={styles.btnText}>
+                {isTr ? "Devam" : "Continue"}
+              </ThemedText>
+              <Feather
+                name="chevron-right"
+                size={16}
+                color={Colors.dark.buttonText}
+              />
+            </Pressable>
+          </View>
+        </ScrollView>
+      )}
+
+      {/* ── ADIM 3: Bağlantı Modu ── */}
+      {step === 3 && (
         <ScrollView
           contentContainerStyle={styles.stepContent}
           showsVerticalScrollIndicator={false}
@@ -567,9 +918,17 @@ export default function OnboardingScreen({
           </ThemedText>
           <ThemedText style={styles.stepDesc}>
             {isTr
-              ? "Nasıl bağlanmak istediğini seç."
-              : "Choose how you want to connect."}
+              ? "Relay secildi. Simdi trafik yolunu belirle."
+              : "Relay selected. Now choose the traffic route."}
           </ThemedText>
+
+          <View style={styles.selectedServerPill}>
+            <Feather name="server" size={14} color={Colors.dark.primary} />
+            <ThemedText style={styles.selectedServerText} numberOfLines={1}>
+              {getSelectedServerUrl() ||
+                (isTr ? "Sunucu secilmedi" : "No server selected")}
+            </ThemedText>
+          </View>
 
           <View style={styles.modeList}>
             {modes.map(({ id, icon, title, desc, badge, badgeColor }) => (
@@ -931,6 +1290,9 @@ const styles = StyleSheet.create({
     borderColor: Colors.dark.primary,
     backgroundColor: Colors.dark.primary + "0D",
   },
+  modeCardDisabled: {
+    opacity: 0.45,
+  },
   modeIcon: {
     width: 40,
     height: 40,
@@ -972,6 +1334,12 @@ const styles = StyleSheet.create({
     color: Colors.dark.textDisabled,
     lineHeight: 18,
   },
+  serverUrlPreview: {
+    fontSize: 11,
+    color: Colors.dark.primary,
+    fontFamily: Fonts?.mono ?? undefined,
+    marginTop: Spacing.sm,
+  },
   modeCheck: {
     width: 22,
     height: 22,
@@ -1006,5 +1374,48 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: Colors.dark.textSecondary,
     lineHeight: 18,
+  },
+  serverStatus: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: Spacing.sm,
+    backgroundColor: Colors.dark.backgroundSecondary,
+    borderRadius: BorderRadius.xs,
+    padding: Spacing.md,
+    marginBottom: Spacing.xl,
+    borderWidth: 1,
+    borderColor: Colors.dark.border,
+  },
+  serverStatusOk: {
+    borderColor: Colors.dark.success + "66",
+    backgroundColor: Colors.dark.success + "11",
+  },
+  serverStatusFail: {
+    borderColor: Colors.dark.warning + "66",
+    backgroundColor: Colors.dark.warning + "11",
+  },
+  serverStatusText: {
+    flex: 1,
+    fontSize: 12,
+    color: Colors.dark.textSecondary,
+    lineHeight: 18,
+  },
+  selectedServerPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Spacing.sm,
+    backgroundColor: Colors.dark.backgroundSecondary,
+    borderRadius: BorderRadius.xs,
+    borderWidth: 1,
+    borderColor: Colors.dark.border,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+    marginBottom: Spacing.xl,
+  },
+  selectedServerText: {
+    flex: 1,
+    fontSize: 12,
+    color: Colors.dark.textSecondary,
+    fontFamily: Fonts?.mono ?? undefined,
   },
 });

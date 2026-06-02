@@ -1,6 +1,6 @@
 # CipherNode — Docker Kurulum Rehberi
 
-Bu rehber CipherNode relay sunucusunu Docker ile kurmayı anlatır.  
+Bu rehber CipherNode web arayüzü + relay sunucusunu tek Docker imajı ile kurmayı anlatır.  
 **3 yöntem var** — ihtiyacınıza göre birini seçin:
 
 | Yöntem | Açıklama | Zorluk |
@@ -64,7 +64,7 @@ curl http://localhost:5000/api/health
 docker compose logs -f ciphernode-relay
 ```
 
-Sunucu `http://localhost:5000` adresinde çalışıyor.
+Sunucu `http://localhost:5000`, web arayüzü `http://localhost:5000/app` adresinde çalışır.
 
 > **Not:** İlk başlatmada Docker Hub'dan image indirilir (~1-2 dakika).
 
@@ -251,11 +251,11 @@ cd ciphernode
 docker build -t ciphernode:custom .
 ```
 
-Build aşamaları (yaklaşık 2-3 dakika):
+Build aşamaları:
 ```
-[1/3] deps    → Production bağımlılıkları kurulur
-[2/3] builder → TypeScript derlenir, server bundle oluşturulur
-[3/3] runner  → Küçük, güvenli final image hazırlanır
+[1/3] deps    → Build bağımlılıkları kurulur
+[2/3] builder → Expo web export + server bundle oluşturulur
+[3/3] runner  → Sadece runtime bağımlılıkları ile web + server imajı hazırlanır
 ```
 
 ### Adım 3: Çalıştır
@@ -276,9 +276,10 @@ docker run -d \
   --restart unless-stopped \
   -p 5000:5000 \
   -e HTTPS=false \
-  -e DATABASE_URL=postgresql://user:pass@host:5432/ciphernode \
   ciphernode:custom
 ```
+
+Web arayüzü aynı container içinde `/app` altında servis edilir.
 
 ---
 

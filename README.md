@@ -124,13 +124,13 @@ npm run build:apk:production
 ### Docker (Önerilen)
 
 ```bash
-# Klon & başlat — web ve Go relay ayağa kalkar
+# Tek paket Docker imajı — web + server aynı container içinde
 git clone https://github.com/boysplaydraw/ciphernode.git
 cd ciphernode
-docker compose -f infra/docker/docker-compose.yml up -d
+docker compose up -d
 ```
 
-Web `http://sunucu-ip:8080`, API `http://sunucu-ip:5000` adresinde çalışır.
+Web `http://sunucu-ip:5000/app`, API `http://sunucu-ip:5000` adresinde çalışır.
 
 **Domain varsa Caddy ile otomatik HTTPS:**
 ```bash
@@ -168,11 +168,16 @@ powershell -File scripts\windows-start.ps1 -Mode cloudflare
 powershell -File scripts\windows-start.ps1 -Mode ngrok
 ```
 
-### Termux (Android)
+### Termux (Android Terminal Emulator)
 
 ```bash
+pkg install -y nodejs tar
+tar -xzf ciphernode-termux.tar.gz
+cd ciphernode-termux
 bash termux-start.sh
 ```
+
+Termux bir Android terminal emulatorudur. Paket bu terminal ortamında rootsuz çalışır; varsayılan port `5000` olduğu için Android'de özel yetki gerekmez.
 
 ---
 

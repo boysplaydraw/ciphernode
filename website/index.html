@@ -777,8 +777,9 @@
         </div>
         <div class="selfhost-body">
           <div class="code-block">
-            <span class="comment"># Tek komutla çalıştır</span><br/>
+            <span class="comment"># Tek imaj: web + server</span><br/>
             <span class="cmd">docker run -d</span> \<br/>
+            &nbsp;&nbsp;--name ciphernode \<br/>
             &nbsp;&nbsp;-p 443:443 -p 80:80 -p 5000:5000 \<br/>
             &nbsp;&nbsp;--restart unless-stopped \<br/>
             &nbsp;&nbsp;mero003/ciphernode:latest<br/><br/>
@@ -787,7 +788,7 @@
             <span class="cmd">docker compose up -d</span>
           </div>
           <div class="selfhost-note">
-            Domain yoksa HTTP/IP ile yerel veya LAN kullanımına uygundur. Domain varsa Caddy profiliyle <code>CADDY_SITE_ADDRESS=relay.example.com</code> ve <code>EXPO_PUBLIC_SERVER_URL=https://relay.example.com</code> ayarlayın; HTTPS otomatik alınır.<br/><br/>
+            Web arayüzü ve relay aynı container içindedir: <code>http://sunucu-ip:5000/app</code>. Domain varsa HTTPS için <code>SSL_DOMAIN</code> ve <code>SSL_EMAIL</code> ayarlayın.<br/><br/>
             <a href="https://hub.docker.com/r/mero003/ciphernode" target="_blank" rel="noopener" style="color:var(--cyan);font-size:12px;">🐳 Docker Hub → mero003/ciphernode</a>
           </div>
         </div>
@@ -798,20 +799,25 @@
           <span style="font-size:24px">📱</span>
           <div>
             <div class="selfhost-platform">Termux (Android)</div>
-            <div style="font-size:12px;color:var(--text2)">Android telefon = sunucu</div>
+            <div style="font-size:12px;color:var(--text2)">Android terminal emulatoru</div>
           </div>
         </div>
         <div class="selfhost-body">
           <div class="code-block">
-            <span class="comment"># Script'i indir ve çalıştır</span><br/>
-            <span class="cmd">curl -O</span> https://raw.githubusercontent.com/boysplaydraw/ciphernode/master/termux-start.sh<br/>
+            <span class="comment"># Root gerekmez</span><br/>
+            <span class="cmd">curl -LO</span> https://github.com/boysplaydraw/ciphernode/releases/latest/download/ciphernode-termux.tar.gz<br/>
+            <span class="cmd">tar -xzf</span> ciphernode-termux.tar.gz<br/>
+            <span class="cmd">cd</span> ciphernode-termux<br/>
             <span class="cmd">bash termux-start.sh</span><br/><br/>
-            <span class="comment"># Tor ile</span><br/>
+            <span class="comment"># HTTPS tunnel ile</span><br/>
+            <span class="cmd">bash termux-start.sh</span> cloudflare<br/><br/>
+            <span class="comment"># Alternatifler</span><br/>
+            <span class="cmd">bash termux-start.sh</span> localtunnel<br/>
             <span class="cmd">bash termux-start.sh</span> tor
           </div>
           <div class="selfhost-note">
-            Termux F-Droid'den indirilebilir. Tüm bağımlılıklar otomatik kurulur.<br/>
-            <a href="https://raw.githubusercontent.com/boysplaydraw/ciphernode/master/termux-start.sh" download style="color:var(--cyan);font-size:12px;">⬇ termux-start.sh indir</a>
+            Termux bir Android terminal emulatorudur ve F-Droid'den indirilebilir. Root gerekmez; HTTPS gerekiyorsa Cloudflare Tunnel <code>https://...trycloudflare.com/app</code> adresi üretir.<br/>
+            <a href="https://github.com/boysplaydraw/ciphernode/blob/master/TERMUX.md" style="color:var(--cyan);font-size:12px;">Termux kurulum notları</a>
           </div>
         </div>
       </div>
@@ -1006,6 +1012,7 @@
       <div class="footer-brand">
         <h3>CipherNode</h3>
         <p>Sansürsüz, izlenemez, özgür mesajlaşma. Gizlilik bir hak, uzlaşı değil.</p>
+        <p><a href="/privacy">Gizlilik Politikası</a> · <a href="/terms">Kullanım Şartları</a> · <a href="https://www.gnu.org/licenses/gpl-3.0.html" target="_blank" rel="noopener">GPLv3 Lisans</a></p>
         <br/>
         <span class="no-track">✓ Kayıt yok &nbsp;·&nbsp; İzleme yok &nbsp;·&nbsp; Reklam yok</span>
       </div>

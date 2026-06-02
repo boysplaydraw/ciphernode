@@ -34,7 +34,7 @@ func Load() Config {
 		RateLimitPerMinute: intEnv("RATE_LIMIT_PER_MINUTE", 120),
 		MaxFileSizeBytes:   int64(intEnv("MAX_FILE_SIZE_MB", 100)) * 1024 * 1024,
 		MaxFileDownloads:   intEnv("MAX_FILE_DOWNLOADS", 10),
-		AllowedOrigins:     splitEnv("ALLOWED_ORIGINS", "*"),
+		AllowedOrigins:     splitEnv("ALLOWED_ORIGINS", ""),
 		OnionAddress:       getenv("ONION_ADDRESS", ""),
 	}
 }
@@ -76,6 +76,9 @@ func durationEnv(key string, fallback time.Duration) time.Duration {
 
 func splitEnv(key, fallback string) []string {
 	raw := getenv(key, fallback)
+	if raw == "" {
+		return nil
+	}
 	if raw == "*" {
 		return []string{"*"}
 	}

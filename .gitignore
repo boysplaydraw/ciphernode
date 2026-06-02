@@ -57,6 +57,7 @@ electron/dist/
 **/.gocache/
 *.test
 *.go.[0-9]*
+termux-package*/
 
 app-example
 

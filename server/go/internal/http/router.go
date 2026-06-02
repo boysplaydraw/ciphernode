@@ -2,7 +2,9 @@ package http
 
 import (
 	"encoding/json"
+	"net"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -81,7 +83,7 @@ func NewRouter(cfg config.Config, store storage.Store, fileSvc *files.Service, h
 		writeJSON(w, http.StatusOK, map[string]string{"onionAddress": cfg.OnionAddress})
 	})
 	mux.HandleFunc("/ws", hub.ServeWS)
-	return cors(mux)
+	return securityHeaders(cors(mux, cfg))
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {
@@ -90,13 +92,33 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 	_ = json.NewEncoder(w).Encode(v)
 }
 
-func cors(next http.Handler) http.Handler {
+func securityHeaders(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		w.Header().Set("X-Frame-Options", "DENY")
+		w.Header().Set("Referrer-Policy", "no-referrer")
+		w.Header().Set("Permissions-Policy", "camera=(), microphone=(), geolocation=(), payment=()")
+		if r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https" {
+			w.Header().Set("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+func cors(next http.Handler, cfg config.Config) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		origin := r.Header.Get("Origin")
-		if origin == "" {
-			origin = "*"
+		if origin != "" && !allowedOrigin(origin, r.Host, cfg.AllowedOrigins) {
+			w.WriteHeader(http.StatusForbidden)
+			return
 		}
-		w.Header().Set("Access-Control-Allow-Origin", origin)
+		if origin == "" {
+			w.Header().Set("Access-Control-Allow-Origin", "*")
+		} else {
+			w.Header().Set("Access-Control-Allow-Origin", origin)
+			w.Header().Set("Access-Control-Allow-Credentials", "true")
+			w.Header().Add("Vary", "Origin")
+		}
 		w.Header().Set("Access-Control-Allow-Methods", "GET,POST,OPTIONS")
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type,Authorization,bypass-tunnel-reminder,X-Tor-Enabled,X-Tor-Proxy")
 		if r.Method == http.MethodOptions {
@@ -105,4 +127,31 @@ func cors(next http.Handler) http.Handler {
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+func allowedOrigin(origin string, requestHost string, allowlist []string) bool {
+	for _, allowed := range allowlist {
+		allowed = strings.TrimSpace(allowed)
+		if allowed == "*" || allowed == origin {
+			return true
+		}
+	}
+
+	parsed, err := url.Parse(origin)
+	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") {
+		return false
+	}
+
+	host := parsed.Hostname()
+	requestHostname := requestHost
+	if h, _, err := net.SplitHostPort(requestHostname); err == nil {
+		requestHostname = h
+	}
+
+	return host == requestHostname ||
+		host == "localhost" ||
+		host == "127.0.0.1" ||
+		host == "::1" ||
+		strings.HasSuffix(host, ".localhost") ||
+		strings.HasSuffix(host, ".onion")
 }

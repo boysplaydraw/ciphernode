@@ -1,4 +1,6 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import * as SecureStore from "expo-secure-store";
+import { Platform } from "react-native";
 import * as openpgp from "openpgp";
 import {
   generateSecretKey,
@@ -54,7 +56,7 @@ export function generateShortId(fingerprint: string): string {
   return `${part1}-${part2}`;
 }
 
-export async function generateKeyPair(rsaBits: 2048 | 4096 = 2048): Promise<{
+export async function generateKeyPair(rsaBits: 2048 | 3072 | 4096 = 4096): Promise<{
   publicKey: string;
   privateKey: string;
   fingerprint: string;
@@ -75,13 +77,25 @@ export async function generateKeyPair(rsaBits: 2048 | 4096 = 2048): Promise<{
 }
 
 export async function getOrCreateIdentity(): Promise<UserIdentity> {
-  const stored = await AsyncStorage.getItem(IDENTITY_STORAGE_KEY);
+  let stored = Platform.OS === "web" 
+    ? await AsyncStorage.getItem(IDENTITY_STORAGE_KEY)
+    : await SecureStore.getItemAsync(IDENTITY_STORAGE_KEY);
+
+  // Migrate old plaintext keys on native platforms
+  if (!stored && Platform.OS !== "web") {
+    stored = await AsyncStorage.getItem(IDENTITY_STORAGE_KEY);
+    if (stored) {
+      await SecureStore.setItemAsync(IDENTITY_STORAGE_KEY, stored);
+      await AsyncStorage.removeItem(IDENTITY_STORAGE_KEY);
+    }
+  }
 
   if (stored) {
     const parsed: UserIdentity = JSON.parse(stored);
     // Bozuk/boş anahtarla kaydedilmiş eski veriyi temizle ve yeniden üret
     if (!parsed.publicKey || !parsed.privateKey) {
-      await AsyncStorage.removeItem(IDENTITY_STORAGE_KEY);
+      if (Platform.OS === "web") await AsyncStorage.removeItem(IDENTITY_STORAGE_KEY);
+      else await SecureStore.deleteItemAsync(IDENTITY_STORAGE_KEY);
       return getOrCreateIdentity();
     }
     // id alanı yoksa fingerprint'ten türet ve kaydet
@@ -94,7 +108,8 @@ export async function getOrCreateIdentity(): Promise<UserIdentity> {
       parsed.nostrPrivkey = nostrKeys.nostrPrivkey;
       parsed.nostrPubkey = nostrKeys.nostrPubkey;
     }
-    await AsyncStorage.setItem(IDENTITY_STORAGE_KEY, JSON.stringify(parsed));
+    if (Platform.OS === "web") await AsyncStorage.setItem(IDENTITY_STORAGE_KEY, JSON.stringify(parsed));
+    else await SecureStore.setItemAsync(IDENTITY_STORAGE_KEY, JSON.stringify(parsed));
     return parsed;
   }
 
@@ -113,13 +128,25 @@ export async function getOrCreateIdentity(): Promise<UserIdentity> {
     nostrPubkey,
   };
 
-  await AsyncStorage.setItem(IDENTITY_STORAGE_KEY, JSON.stringify(identity));
+  if (Platform.OS === "web") await AsyncStorage.setItem(IDENTITY_STORAGE_KEY, JSON.stringify(identity));
+  else await SecureStore.setItemAsync(IDENTITY_STORAGE_KEY, JSON.stringify(identity));
   return identity;
 }
 
 export async function getIdentity(): Promise<UserIdentity | null> {
   try {
-    const stored = await AsyncStorage.getItem(IDENTITY_STORAGE_KEY);
+    let stored = Platform.OS === "web" 
+      ? await AsyncStorage.getItem(IDENTITY_STORAGE_KEY)
+      : await SecureStore.getItemAsync(IDENTITY_STORAGE_KEY);
+    
+    // Fallback migration check for getIdentity
+    if (!stored && Platform.OS !== "web") {
+      stored = await AsyncStorage.getItem(IDENTITY_STORAGE_KEY);
+      if (stored) {
+        await SecureStore.setItemAsync(IDENTITY_STORAGE_KEY, stored);
+        await AsyncStorage.removeItem(IDENTITY_STORAGE_KEY);
+      }
+    }
     return stored ? JSON.parse(stored) : null;
   } catch {
     return null;
@@ -130,12 +157,14 @@ export async function updateDisplayName(name: string): Promise<void> {
   const identity = await getIdentity();
   if (identity) {
     identity.displayName = name;
-    await AsyncStorage.setItem(IDENTITY_STORAGE_KEY, JSON.stringify(identity));
+    if (Platform.OS === "web") await AsyncStorage.setItem(IDENTITY_STORAGE_KEY, JSON.stringify(identity));
+    else await SecureStore.setItemAsync(IDENTITY_STORAGE_KEY, JSON.stringify(identity));
   }
 }
 
 export async function regenerateIdentity(): Promise<UserIdentity> {
-  await AsyncStorage.removeItem(IDENTITY_STORAGE_KEY);
+  if (Platform.OS === "web") await AsyncStorage.removeItem(IDENTITY_STORAGE_KEY);
+  else await SecureStore.deleteItemAsync(IDENTITY_STORAGE_KEY);
   return getOrCreateIdentity();
 }
 
@@ -187,7 +216,7 @@ export async function decryptMessage(
     !privateKeyArmored ||
     !encryptedMessage.includes("-----BEGIN PGP MESSAGE-----")
   ) {
-    return { content: encryptedMessage, verified: false };
+    return { content: "[Decryption Failed]", verified: false };
   }
 
   try {
@@ -229,7 +258,7 @@ export async function decryptMessage(
     return { content: decrypted as string, verified };
   } catch (error) {
     console.error("Decryption error:", error);
-    return { content: encryptedMessage, verified: false };
+    return { content: "[Decryption Failed]", verified: false };
   }
 }
 
@@ -266,7 +295,7 @@ export async function signMessage(
     return signed;
   } catch (error) {
     console.error("Signing error:", error);
-    return message;
+    throw new Error("Signing failed: " + (error instanceof Error ? error.message : String(error)));
   }
 }
 
@@ -319,7 +348,8 @@ export async function importIdentityFromBackup(
   if (!parsed.id || !parsed.publicKey || !parsed.privateKey) {
     throw new Error("Invalid identity backup");
   }
-  await AsyncStorage.setItem(IDENTITY_STORAGE_KEY, JSON.stringify(parsed));
+  if (Platform.OS === "web") await AsyncStorage.setItem(IDENTITY_STORAGE_KEY, JSON.stringify(parsed));
+  else await SecureStore.setItemAsync(IDENTITY_STORAGE_KEY, JSON.stringify(parsed));
   return parsed;
 }
 

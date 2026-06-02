@@ -62,9 +62,9 @@
 
   <!-- Ortam değişkenleri -->
   <Config Name="Database URL" Target="DATABASE_URL"
-    Default="postgresql://ciphernode:password@[POSTGRES_IP]:5432/ciphernode"
+    Default="postgresql://ciphernode:CHANGE_ME_STRONG_PASSWORD@[POSTGRES_IP]:5432/ciphernode"
     Mode="" Description="PostgreSQL connection string. Replace [POSTGRES_IP] with your Postgres container IP."
-    Type="Variable" Display="always" Required="true" Mask="false">postgresql://ciphernode:password@[POSTGRES_IP]:5432/ciphernode</Config>
+    Type="Variable" Display="always" Required="true" Mask="false">postgresql://ciphernode:CHANGE_ME_STRONG_PASSWORD@[POSTGRES_IP]:5432/ciphernode</Config>
 
   <Config Name="HTTPS Mode" Target="HTTPS"
     Default="false" Mode=""

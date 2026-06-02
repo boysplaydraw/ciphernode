@@ -1,8 +1,38 @@
 import type { Express } from "express";
+import { randomBytes, randomInt } from "node:crypto";
 import { createServer, type Server } from "node:http";
 import type { Server as HttpsServer } from "node:https";
 import { Server as SocketIOServer } from "socket.io";
 import { getOnionAddress } from "./tor-hidden-service";
+import { isAllowedOrigin } from "./security";
+
+// ── Per-IP rate limiter ──────────────────────────────────────────────
+const ipRequestCounts = new Map<string, { count: number; resetAt: number }>();
+const RATE_LIMIT_WINDOW_MS = 60_000; // 1 minute
+const RATE_LIMIT_MAX_REQUESTS = 60; // max requests per window
+
+function checkRateLimit(ip: string): boolean {
+  const now = Date.now();
+  const entry = ipRequestCounts.get(ip);
+  if (!entry || now > entry.resetAt) {
+    ipRequestCounts.set(ip, { count: 1, resetAt: now + RATE_LIMIT_WINDOW_MS });
+    return true;
+  }
+  entry.count++;
+  return entry.count <= RATE_LIMIT_MAX_REQUESTS;
+}
+
+// Periodically clean up stale rate limit entries
+setInterval(() => {
+  const now = Date.now();
+  for (const [ip, entry] of ipRequestCounts.entries()) {
+    if (now > entry.resetAt) ipRequestCounts.delete(ip);
+  }
+}, 5 * 60 * 1000);
+
+// ── Pending messages queue size limit ────────────────────────────────
+const MAX_PENDING_PER_USER = 500;
+const MAX_FILES_IN_MEMORY = 1000;
 
 interface PendingMessage {
   id: string;
@@ -40,7 +70,7 @@ const matchSessions = new Map<string, MatchSession>(); // sessionId → MatchSes
 const userToSession = new Map<string, string>(); // userId → sessionId
 
 function generateSessionId(): string {
-  return `match_${Date.now()}_${Math.random().toString(36).substr(2, 8)}`;
+  return `match_${Date.now()}_${randomBytes(8).toString("hex")}`;
 }
 
 function generateAlias(): string {
@@ -68,7 +98,7 @@ function generateAlias(): string {
     "tide",
     "shift",
   ];
-  return `${adj[Math.floor(Math.random() * adj.length)]}_${noun[Math.floor(Math.random() * noun.length)]}`;
+  return `${adj[randomInt(adj.length)]}_${noun[randomInt(noun.length)]}`;
 }
 
 // 10 dakika sonra oturumları temizle
@@ -147,7 +177,7 @@ function relayLog(devMsg: string, prodMsg?: string) {
 }
 
 function generateMessageId(): string {
-  return `srv_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  return `srv_${Date.now()}_${randomBytes(9).toString("hex")}`;
 }
 
 function cleanupDeliveredIds() {
@@ -225,6 +255,17 @@ export async function registerRoutes(
    * Dosya içeriği zaten client tarafında E2EE ile şifrelenmiş olmalı.
    */
   app.post("/api/files/upload", (req, res) => {
+    // Rate limit check
+    const clientIp = req.ip || req.socket.remoteAddress || "unknown";
+    if (!checkRateLimit(clientIp)) {
+      return res.status(429).json({ error: "Too many requests" });
+    }
+
+    // Limit total files in memory
+    if (sharedFiles.size >= MAX_FILES_IN_MEMORY) {
+      return res.status(503).json({ error: "Server storage full, try again later" });
+    }
+
     const { name, size, mimeType, encryptedData, uploadedBy, maxDownloads } =
       req.body;
 
@@ -238,7 +279,7 @@ export async function registerRoutes(
       return res.status(413).json({ error: "File too large (max 100MB)" });
     }
 
-    const fileId = `file_${Date.now()}_${Math.random().toString(36).substr(2, 12)}`;
+    const fileId = `file_${Date.now()}_${randomBytes(12).toString("hex")}`;
     const file: SharedFile = {
       id: fileId,
       name,
@@ -337,6 +378,10 @@ export async function registerRoutes(
 
   app.post("/api/contacts/:userId", (req, res) => {
     const { userId } = req.params;
+    // Validate userId format
+    if (!userId || userId.length > 100 || !/^[\w-]+$/.test(userId)) {
+      return res.status(400).json({ error: "Invalid userId" });
+    }
     const { contacts } = req.body;
     if (!Array.isArray(contacts)) {
       return res.status(400).json({ error: "contacts must be an array" });
@@ -355,7 +400,9 @@ export async function registerRoutes(
 
   const io = new SocketIOServer(httpServer, {
     cors: {
-      origin: "*",
+      origin: (origin, callback) => {
+        callback(null, isAllowedOrigin(origin));
+      },
       methods: ["GET", "POST"],
     },
   });
@@ -376,6 +423,10 @@ export async function registerRoutes(
           | string,
       ) => {
         const userId = typeof data === "string" ? data : data.userId;
+        // Validate userId
+        if (!userId || typeof userId !== "string" || userId.length > 200 || userId.length < 1) {
+          return;
+        }
         const publicKey = typeof data === "object" ? data.publicKey : undefined;
         const userGroups = typeof data === "object" ? data.groups : undefined;
 
@@ -477,6 +528,10 @@ export async function registerRoutes(
         } else if (!data.p2pOnly) {
           // p2pOnly=true ise çevrimdışı kullanıcılar için kuyruklama yok
           const pending = pendingMessages.get(data.to) || [];
+          if (pending.length >= MAX_PENDING_PER_USER) {
+            relayLog(`Message queue full for user: ${data.to}`, "Event: queue_full");
+            return;
+          }
           pending.push({
             id: messageId,
             from: data.from,
@@ -575,6 +630,10 @@ export async function registerRoutes(
                 });
               } else {
                 const pending = pendingMessages.get(memberId) || [];
+                if (pending.length >= MAX_PENDING_PER_USER) {
+                  relayLog(`Message queue full for user: ${memberId}`, "Event: queue_full");
+                  return;
+                }
                 pending.push({
                   id: messageId,
                   from: data.from,
@@ -755,13 +814,13 @@ export async function registerRoutes(
           sessionId,
           partnerAlias: paired.alias,
           interests: [],
-          trustScore: Math.floor(70 + Math.random() * 30),
+          trustScore: randomInt(70, 100),
         });
         io.to(paired.socketId).emit("matching:found", {
           sessionId,
           partnerAlias: me.alias,
           interests: [],
-          trustScore: Math.floor(70 + Math.random() * 30),
+          trustScore: randomInt(70, 100),
         });
         relayLog("Matching session created", "Event: matching_found");
       } else {

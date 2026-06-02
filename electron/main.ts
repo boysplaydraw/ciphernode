@@ -48,19 +48,36 @@ const STATIC_MIME: Record<string, string> = {
 };
 
 function startClientServer(distDir: string): Promise<void> {
+  const root = path.resolve(distDir);
+
   return new Promise((resolve, reject) => {
     clientServer = http.createServer((req, res) => {
-      const urlPath = (req.url ?? "/").split("?")[0].split("#")[0];
-      const filePath = path.join(
-        distDir,
-        urlPath === "/" ? "index.html" : urlPath,
-      );
+      let requestedPath = "/";
+      try {
+        requestedPath = decodeURIComponent(
+          (req.url ?? "/").split("?")[0].split("#")[0],
+        );
+      } catch {
+        res.writeHead(400).end("Bad request");
+        return;
+      }
+
+      const relativePath =
+        requestedPath === "/"
+          ? "index.html"
+          : requestedPath.replace(/^[/\\]+/, "");
+      const filePath = path.resolve(root, relativePath);
+      const indexPath = path.join(root, "index.html");
+      if (filePath !== root && !filePath.startsWith(root + path.sep)) {
+        res.writeHead(403).end("Forbidden");
+        return;
+      }
 
       // Dosya yoksa SPA fallback → index.html
       const targetPath =
         fs.existsSync(filePath) && !fs.statSync(filePath).isDirectory()
           ? filePath
-          : path.join(distDir, "index.html");
+          : indexPath;
 
       const ext = path.extname(targetPath).toLowerCase();
       const mime = STATIC_MIME[ext] ?? "application/octet-stream";
@@ -126,9 +143,24 @@ function createWindow() {
 
   // Harici linkleri tarayıcıda aç
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
-    shell.openExternal(url);
+    openExternalUrl(url);
     return { action: "deny" };
   });
+}
+
+function isAllowedExternalUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    return ["http:", "https:", "mailto:"].includes(parsed.protocol);
+  } catch {
+    return false;
+  }
+}
+
+function openExternalUrl(url: string) {
+  if (isAllowedExternalUrl(url)) {
+    void shell.openExternal(url);
+  }
 }
 
 // ── Uygulama menüsü ───────────────────────────────────────────────────
@@ -566,9 +598,13 @@ function setupUpdaterIPC() {
 // ── IPC: Uygulama ─────────────────────────────────────────────────────
 function setupAppIPC() {
   ipcMain.handle("app:version", () => app.getVersion());
-  ipcMain.handle("app:openExternal", (_event, url: string) =>
-    shell.openExternal(url),
-  );
+  ipcMain.handle("app:openExternal", (_event, url: string) => {
+    if (!isAllowedExternalUrl(url)) {
+      return { success: false, error: "URL scheme not allowed" };
+    }
+    void shell.openExternal(url);
+    return { success: true };
+  });
 
   ipcMain.handle("window:minimize", () => mainWindow?.minimize());
   ipcMain.handle("window:maximize", () => {
@@ -645,7 +681,13 @@ app.on("window-all-closed", () => {
 // Güvenlik: Yeni pencere açılmasını engelle
 app.on("web-contents-created", (_event, contents) => {
   contents.on("will-navigate", (event, navigationUrl) => {
-    const parsedUrl = new URL(navigationUrl);
+    let parsedUrl: URL;
+    try {
+      parsedUrl = new URL(navigationUrl);
+    } catch {
+      event.preventDefault();
+      return;
+    }
     // Dev: localhost:8081, Prod: localhost:45678 — her ikisi de izinli
     if (
       parsedUrl.hostname === "localhost" ||

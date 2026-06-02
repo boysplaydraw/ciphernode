@@ -19,8 +19,8 @@ mkdir -p "$SSL_DIR"
 
 # ── Yardımcı fonksiyon ────────────────────────────────────────
 start_server() {
-    echo "[CipherNode] Go Güvenlik Sunucusu başlatılıyor..."
-    exec ./ciphernode-relay
+    echo "[CipherNode] Web + server tek paket başlatılıyor..."
+    exec node /app/server_dist/index.mjs
 }
 
 # ── HTTPS devre dışı mı? ─────────────────────────────────────
@@ -117,7 +117,7 @@ basicConstraints = CA:FALSE
 OPENSSL_EOF
 
 openssl req -x509 \
-    -newkey rsa:2048 \
+    -newkey rsa:4096 \
     -keyout "$KEY_FILE" \
     -out    "$CERT_FILE" \
     -days   3650 \

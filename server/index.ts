@@ -10,12 +10,15 @@ import * as fs from "fs";
 import * as path from "path";
 import * as https from "https";
 import * as http from "http";
+import { isAllowedOrigin } from "./security";
 
 const app = express();
 const log = console.log;
 
 // AWS ALB, GCloud Load Balancer, Nginx arkasında çalışmak için
-app.set("trust proxy", 1);
+// Trust proxy only when behind a known reverse proxy (Docker, Nginx, cloud LB)
+// Set to specific IPs in production: app.set('trust proxy', 'loopback, linklocal, uniquelocal')
+app.set("trust proxy", process.env.TRUST_PROXY || "loopback");
 
 declare module "http" {
   interface IncomingMessage {
@@ -25,14 +28,18 @@ declare module "http" {
 
 function setupCors(app: express.Application) {
   app.use((req, res, next) => {
-    // Tüm origin'lere izin ver — local, Docker, Termux, Tor, ngrok, Replit
     const origin = req.header("origin");
+    if (origin && !isAllowedOrigin(origin, req.header("host"))) {
+      if (req.method === "OPTIONS") return res.sendStatus(403);
+      return res.status(403).json({ error: "Origin not allowed" });
+    }
+
     if (origin) {
       res.header("Access-Control-Allow-Origin", origin);
       res.header("Access-Control-Allow-Credentials", "true");
-    } else {
-      res.header("Access-Control-Allow-Origin", "*");
+      res.header("Vary", "Origin");
     }
+    // When no Origin header is present (non-browser clients), don't set CORS headers
     res.header(
       "Access-Control-Allow-Methods",
       "GET, POST, PUT, DELETE, OPTIONS",
@@ -44,6 +51,34 @@ function setupCors(app: express.Application) {
 
     if (req.method === "OPTIONS") {
       return res.sendStatus(200);
+    }
+
+    next();
+  });
+}
+
+function setupSecurityHeaders(app: express.Application) {
+  app.use((req, res, next) => {
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    res.setHeader("X-Frame-Options", "DENY");
+    res.setHeader("Referrer-Policy", "no-referrer");
+    res.setHeader("X-DNS-Prefetch-Control", "off");
+    res.setHeader("X-Download-Options", "noopen");
+    res.setHeader("X-Permitted-Cross-Domain-Policies", "none");
+    res.setHeader(
+      "Permissions-Policy",
+      "camera=(), microphone=(), geolocation=(), payment=()",
+    );
+    res.setHeader(
+      "Content-Security-Policy",
+      "default-src 'self'; script-src 'self' 'unsafe-inline' https://unpkg.com; style-src 'self' 'unsafe-inline'; connect-src 'self' wss: ws:; img-src 'self' data:; font-src 'self'; frame-ancestors 'none'",
+    );
+
+    if (req.secure || req.header("x-forwarded-proto") === "https") {
+      res.setHeader(
+        "Strict-Transport-Security",
+        "max-age=31536000; includeSubDomains; preload",
+      );
     }
 
     next();
@@ -144,11 +179,12 @@ function serveLandingPage({
   appName: string;
 }) {
   const forwardedProto = req.header("x-forwarded-proto");
-  const protocol = forwardedProto || req.protocol || "https";
+  const protocol = forwardedProto === "http" ? "http" : "https";
   const forwardedHost = req.header("x-forwarded-host");
   const host = forwardedHost || req.get("host");
-  const baseUrl = `${protocol}://${host}`;
-  const expsUrl = `${host}`;
+  const safeHost = String(host || "").replace(/[^A-Za-z0-9.:[\]-]/g, "");
+  const baseUrl = `${protocol}://${safeHost}`;
+  const expsUrl = `${safeHost}`;
 
   log(`baseUrl`, baseUrl);
   log(`expsUrl`, expsUrl);
@@ -349,6 +385,12 @@ function configureExpoAndLanding(app: express.Application) {
   // Marketing website (website/index.html)
   const websiteDir = path.resolve(process.cwd(), "website");
   if (fs.existsSync(websiteDir)) {
+    app.get("/privacy", (_req, res) => {
+      res.sendFile(path.join(websiteDir, "privacy.html"));
+    });
+    app.get("/terms", (_req, res) => {
+      res.sendFile(path.join(websiteDir, "terms.html"));
+    });
     app.use("/website", express.static(websiteDir));
     log("Marketing website served at /website");
   }
@@ -385,11 +427,19 @@ function setupErrorHandler(app: express.Application) {
     };
 
     const status = error.status || error.statusCode || 500;
-    const message = error.message || "Internal Server Error";
+    // Never expose internal error details to clients in production
+    const message =
+      status < 500 || process.env.NODE_ENV !== "production"
+        ? error.message || "Internal Server Error"
+        : "Internal Server Error";
 
-    res.status(status).json({ message });
+    if (status >= 500) {
+      console.error("[Error]", error.message || err);
+    }
 
-    throw err;
+    if (!res.headersSent) {
+      res.status(status).json({ message });
+    }
   });
 }
 
@@ -509,6 +559,7 @@ function resolveSSLPaths(): { cert: string; key: string } | null {
 
 (async () => {
   setupCors(app);
+  setupSecurityHeaders(app);
   setupBodyParsing(app);
   setupRequestLogging(app);
 
@@ -547,12 +598,19 @@ function resolveSSLPaths(): { cert: string; key: string } | null {
         process.env.SSL_DOMAIN || req.headers.host?.replace(/:\d+$/, "") || "";
       // Let's Encrypt ACME doğrulaması için bypass
       if (req.path.startsWith("/.well-known/acme-challenge/")) {
+        // Prevent path traversal in ACME challenge requests
+        const challengeToken = path.basename(req.path);
+        if (!/^[A-Za-z0-9_-]+$/.test(challengeToken)) {
+          return res.status(400).send("Invalid challenge token");
+        }
         const challengePath = path.resolve(
           process.cwd(),
           "var",
           "www",
           "certbot",
-          req.path,
+          ".well-known",
+          "acme-challenge",
+          challengeToken,
         );
         if (fs.existsSync(challengePath)) {
           return res.sendFile(challengePath);

@@ -2,10 +2,12 @@ package main
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"log"
-	"math/rand"
+	"math/big"
 	"net"
 	"net/http"
 	"os"
@@ -22,7 +24,38 @@ var (
 		ReadBufferSize:  1024,
 		WriteBufferSize: 1024,
 		CheckOrigin: func(r *http.Request) bool {
-			return true // Allow all origins for local, Tor, Docker & ngrok
+			origin := r.Header.Get("Origin")
+			if origin == "" {
+				return true // Non-browser clients (curl, mobile apps)
+			}
+			// Allow configured origins
+			allowed := os.Getenv("CORS_ALLOWED_ORIGINS")
+			if allowed == "*" {
+				return true
+			}
+			if allowed != "" {
+				for _, o := range strings.Split(allowed, ",") {
+					if strings.TrimSpace(o) == origin {
+						return true
+					}
+				}
+			}
+			// Allow same-host, localhost, LAN, .onion
+			host := r.Host
+			if strings.Contains(origin, host) {
+				return true
+			}
+			if strings.Contains(origin, "localhost") || strings.Contains(origin, "127.0.0.1") || strings.Contains(origin, "[::1]") {
+				return true
+			}
+			if strings.Contains(origin, ".onion") {
+				return true
+			}
+			// Allow private LAN IPs
+			if strings.Contains(origin, "192.168.") || strings.Contains(origin, "10.") {
+				return true
+			}
+			return false
 		},
 	}
 
@@ -49,6 +82,106 @@ var (
 	scanner         *AntiGravitiScanner
 	securityManager *SecurityManager
 )
+
+// ── Rate Limiter ──────────────────────────────────────────────────────
+type RateLimiter struct {
+	mu       sync.Mutex
+	visitors map[string]*visitorEntry
+}
+
+type visitorEntry struct {
+	tokens    int
+	lastCheck time.Time
+}
+
+var rateLimiter = &RateLimiter{
+	visitors: make(map[string]*visitorEntry),
+}
+
+const (
+	rateLimitBurst   = 30
+	rateLimitPerSec  = 10
+	maxRequestBodyMB = 150
+)
+
+func (rl *RateLimiter) Allow(ip string) bool {
+	rl.mu.Lock()
+	defer rl.mu.Unlock()
+
+	v, exists := rl.visitors[ip]
+	now := time.Now()
+	if !exists {
+		rl.visitors[ip] = &visitorEntry{tokens: rateLimitBurst - 1, lastCheck: now}
+		return true
+	}
+
+	elapsed := now.Sub(v.lastCheck).Seconds()
+	v.lastCheck = now
+	v.tokens += int(elapsed * float64(rateLimitPerSec))
+	if v.tokens > rateLimitBurst {
+		v.tokens = rateLimitBurst
+	}
+
+	if v.tokens <= 0 {
+		return false
+	}
+	v.tokens--
+	return true
+}
+
+func (rl *RateLimiter) Cleanup() {
+	rl.mu.Lock()
+	defer rl.mu.Unlock()
+	now := time.Now()
+	for ip, v := range rl.visitors {
+		if now.Sub(v.lastCheck) > 10*time.Minute {
+			delete(rl.visitors, ip)
+		}
+	}
+}
+
+// securityHeaders adds defensive HTTP headers to every response.
+func securityHeaders(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		w.Header().Set("X-Frame-Options", "DENY")
+		w.Header().Set("Referrer-Policy", "no-referrer")
+		w.Header().Set("Permissions-Policy", "camera=(), microphone=(), geolocation=(), payment=()")
+		w.Header().Set("Content-Security-Policy", "default-src 'self'; connect-src 'self' wss: ws:; script-src 'self'; style-src 'self' 'unsafe-inline'")
+		next.ServeHTTP(w, r)
+	})
+}
+
+// rateLimitMiddleware rejects requests exceeding the per-IP rate limit.
+func rateLimitMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ip, _, _ := net.SplitHostPort(r.RemoteAddr)
+		if ip == "" {
+			ip = r.RemoteAddr
+		}
+		if !rateLimiter.Allow(ip) {
+			http.Error(w, "Rate limit exceeded", http.StatusTooManyRequests)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+// cryptoRandInt returns a cryptographically random int in [0, max).
+func cryptoRandInt(max int64) int64 {
+	n, err := rand.Int(rand.Reader, big.NewInt(max))
+	if err != nil {
+		return 0
+	}
+	return n.Int64()
+}
+
+// cryptoRandHex returns n random hex bytes.
+func cryptoRandHex(n int) string {
+	b := make([]byte, n)
+	_, _ = rand.Read(b)
+	return hex.EncodeToString(b)
+}
 
 // Data Models matching client-server protocol
 type PendingMsg struct {
@@ -154,16 +287,24 @@ func main() {
 
 	// Periodic cleanups mirroring TypeScript implementation
 	go runPeriodicCleanups()
+	go func() {
+		for range time.NewTicker(5 * time.Minute).C {
+			rateLimiter.Cleanup()
+		}
+	}()
 
 	// Routes
-	http.HandleFunc("/api/health", handleHealth)
-	http.HandleFunc("/api/stats", handleStats)
-	http.HandleFunc("/api/files/upload", handleFileUpload)
-	http.HandleFunc("/api/files/", handleFileDownload) // Handles download & info
-	http.HandleFunc("/api/onion-address", handleOnionAddress)
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/health", handleHealth)
+	mux.HandleFunc("/api/stats", handleStats)
+	mux.HandleFunc("/api/files/upload", handleFileUpload)
+	mux.HandleFunc("/api/files/", handleFileDownload) // Handles download & info
+	mux.HandleFunc("/api/onion-address", handleOnionAddress)
 	
 	// WebSocket upgrade endpoint (mirrors Socket.IO socket transport endpoint)
-	http.HandleFunc("/socket.io/", handleSocketIOUpgrade)
+	mux.HandleFunc("/socket.io/", handleSocketIOUpgrade)
+
+	handler := securityHeaders(rateLimitMiddleware(mux))
 
 	port := os.Getenv("PORT")
 	if port == "" {
@@ -171,7 +312,16 @@ func main() {
 	}
 
 	log.Printf("[Relay] CipherNode Go Security Relay running on port %s", port)
-	if err := http.ListenAndServe(":"+port, nil); err != nil {
+	server := &http.Server{
+		Addr:              ":" + port,
+		Handler:           handler,
+		ReadTimeout:       30 * time.Second,
+		WriteTimeout:      60 * time.Second,
+		IdleTimeout:       120 * time.Second,
+		MaxHeaderBytes:    1 << 20, // 1 MB
+		ReadHeaderTimeout: 10 * time.Second,
+	}
+	if err := server.ListenAndServe(); err != nil {
 		log.Fatalf("Server stopped: %v", err)
 	}
 }
@@ -180,7 +330,12 @@ func main() {
 func handleHealth(w http.ResponseWriter, r *http.Request) {
 	// Simple JSON response
 	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Access-Control-Allow-Origin", "*")
+	origin := r.Header.Get("Origin")
+	if origin != "" {
+		w.Header().Set("Access-Control-Allow-Origin", origin)
+		w.Header().Set("Access-Control-Allow-Credentials", "true")
+		w.Header().Set("Vary", "Origin")
+	}
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"status":    "ok",
 		"timestamp": time.Now().UnixNano() / int64(time.Millisecond),
@@ -190,7 +345,12 @@ func handleHealth(w http.ResponseWriter, r *http.Request) {
 
 func handleStats(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Access-Control-Allow-Origin", "*")
+	origin := r.Header.Get("Origin")
+	if origin != "" {
+		w.Header().Set("Access-Control-Allow-Origin", origin)
+		w.Header().Set("Access-Control-Allow-Credentials", "true")
+		w.Header().Set("Vary", "Origin")
+	}
 
 	connectedMutex.RLock()
 	usersCount := len(connectedUsers)
@@ -216,7 +376,12 @@ func handleStats(w http.ResponseWriter, r *http.Request) {
 }
 
 func handleFileUpload(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Access-Control-Allow-Origin", "*")
+	origin := r.Header.Get("Origin")
+	if origin != "" {
+		w.Header().Set("Access-Control-Allow-Origin", origin)
+		w.Header().Set("Access-Control-Allow-Credentials", "true")
+		w.Header().Set("Vary", "Origin")
+	}
 	w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
 	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
 
@@ -239,6 +404,7 @@ func handleFileUpload(w http.ResponseWriter, r *http.Request) {
 		MaxDownloads  int    `json:"maxDownloads"`
 	}
 
+	r.Body = http.MaxBytesReader(w, r.Body, maxRequestBodyMB*1024*1024)
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "Bad request: "+err.Error(), http.StatusBadRequest)
 		return
@@ -256,7 +422,7 @@ func handleFileUpload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	fileId := fmt.Sprintf("file_%d_%012d", time.Now().Unix(), rand.Int63n(1e12))
+	fileId := fmt.Sprintf("file_%d_%012d", time.Now().Unix(), cryptoRandInt(1e12))
 	expiresAt := time.Now().Add(24 * time.Hour).UnixNano() / int64(time.Millisecond)
 	maxDl := req.MaxDownloads
 	if maxDl <= 0 {
@@ -290,7 +456,12 @@ func handleFileUpload(w http.ResponseWriter, r *http.Request) {
 }
 
 func handleFileDownload(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Access-Control-Allow-Origin", "*")
+	origin := r.Header.Get("Origin")
+	if origin != "" {
+		w.Header().Set("Access-Control-Allow-Origin", origin)
+		w.Header().Set("Access-Control-Allow-Credentials", "true")
+		w.Header().Set("Vary", "Origin")
+	}
 	w.Header().Set("Content-Type", "application/json")
 
 	parts := strings.Split(r.URL.Path, "/")
@@ -344,10 +515,15 @@ func handleFileDownload(w http.ResponseWriter, r *http.Request) {
 
 func handleOnionAddress(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Access-Control-Allow-Origin", "*")
+	origin := r.Header.Get("Origin")
+	if origin != "" {
+		w.Header().Set("Access-Control-Allow-Origin", origin)
+		w.Header().Set("Access-Control-Allow-Credentials", "true")
+		w.Header().Set("Vary", "Origin")
+	}
 	onion := os.Getenv("ONION_ADDRESS")
 	if onion == "" {
-		onion = "ciphernode66test.onion" // Mock placeholder onion
+		onion = "" // No onion address configured
 	}
 	json.NewEncoder(w).Encode(map[string]string{
 		"onionAddress": onion,
@@ -367,9 +543,14 @@ func handleSocketIOUpgrade(w http.ResponseWriter, r *http.Request) {
 	// Check if this is a standard websocket transport request
 	if r.URL.Query().Get("transport") != "websocket" {
 		// Respond with Socket.IO engine handshake if requested via HTTP polling
-		w.Header().Set("Access-Control-Allow-Origin", "*")
+		origin := r.Header.Get("Origin")
+		if origin != "" {
+			w.Header().Set("Access-Control-Allow-Origin", origin)
+			w.Header().Set("Access-Control-Allow-Credentials", "true")
+			w.Header().Set("Vary", "Origin")
+		}
 		w.Header().Set("Content-Type", "application/json")
-		sid := fmt.Sprintf("sid_%d", time.Now().UnixNano())
+		sid := fmt.Sprintf("sid_%s", cryptoRandHex(16))
 		json.NewEncoder(w).Encode(map[string]interface{}{
 			"sid":          sid,
 			"upgrades":     []string{"websocket"},
@@ -385,7 +566,7 @@ func handleSocketIOUpgrade(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	socketId := fmt.Sprintf("sock_%d", time.Now().UnixNano())
+	socketId := fmt.Sprintf("sock_%s", cryptoRandHex(16))
 	clientConn := &ClientConn{
 		Conn:     conn,
 		IP:       ip,
@@ -568,7 +749,7 @@ func handleSocketEvent(cc *ClientConn, event string, args []json.RawMessage) {
 		}
 
 		if msg.ID == "" {
-			msg.ID = fmt.Sprintf("msg_%d_%d", time.Now().UnixNano(), rand.Intn(1000))
+			msg.ID = fmt.Sprintf("msg_%d_%d", time.Now().UnixNano(), cryptoRandInt(1000))
 		}
 
 		// Ignore duplicates
@@ -677,7 +858,7 @@ func handleSocketEvent(cc *ClientConn, event string, args []json.RawMessage) {
 		}
 
 		if gm.ID == "" {
-			gm.ID = fmt.Sprintf("gmsg_%d_%d", time.Now().UnixNano(), rand.Intn(1000))
+			gm.ID = fmt.Sprintf("gmsg_%d_%d", time.Now().UnixNano(), cryptoRandInt(1000))
 		}
 
 		groupsMutex.RLock()

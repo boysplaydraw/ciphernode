@@ -15,6 +15,7 @@
  */
 
 import { Platform } from "react-native";
+import { isTorEnabled } from "./socket";
 
 // ── Platform-aware RTCPeerConnection ──────────────────────────────────
 let RTCPeerConnectionImpl: typeof RTCPeerConnection;
@@ -39,6 +40,7 @@ if (Platform.OS === "web") {
 }
 
 export function isWebRTCAvailable(): boolean {
+  if (isTorEnabled()) return false; // Prevent IP leaks over STUN/WebRTC when using Tor
   return !!RTCPeerConnectionImpl;
 }
 

@@ -5,6 +5,8 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -43,6 +45,7 @@ func NewRouter(cfg config.Config, store storage.Store, fileSvc *files.Service, h
 			w.WriteHeader(http.StatusMethodNotAllowed)
 			return
 		}
+		r.Body = http.MaxBytesReader(w, r.Body, maxUploadRequestBytes(cfg.MaxFileSizeBytes))
 		var req files.UploadRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Name == "" || req.EncryptedData == "" || req.UploadedBy == "" {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "Missing required fields"})
@@ -83,7 +86,62 @@ func NewRouter(cfg config.Config, store storage.Store, fileSvc *files.Service, h
 		writeJSON(w, http.StatusOK, map[string]string{"onionAddress": cfg.OnionAddress})
 	})
 	mux.HandleFunc("/ws", hub.ServeWS)
+	registerStaticRoutes(mux)
 	return securityHeaders(cors(mux, cfg))
+}
+
+func registerStaticRoutes(mux *http.ServeMux) {
+	mux.HandleFunc("/app", func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "/app/", http.StatusMovedPermanently)
+	})
+	mux.HandleFunc("/app/", serveSPA("dist", "/app/"))
+	mux.HandleFunc("/privacy", serveNamedFile("website/privacy.html"))
+	mux.HandleFunc("/terms", serveNamedFile("website/terms.html"))
+	mux.Handle("/assets/", http.StripPrefix("/assets/", http.FileServer(http.Dir("assets"))))
+	mux.Handle("/website/", http.StripPrefix("/website/", http.FileServer(http.Dir("website"))))
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/" {
+			http.NotFound(w, r)
+			return
+		}
+		serveNamedFile("website/index.html")(w, r)
+	})
+}
+
+func serveSPA(root string, prefix string) http.HandlerFunc {
+	fileServer := http.StripPrefix(prefix, http.FileServer(http.Dir(root)))
+	index := filepath.Join(root, "index.html")
+	return func(w http.ResponseWriter, r *http.Request) {
+		rel := strings.TrimPrefix(r.URL.Path, prefix)
+		if rel == "" {
+			http.ServeFile(w, r, index)
+			return
+		}
+		target := filepath.Clean(filepath.Join(root, rel))
+		rootClean := filepath.Clean(root)
+		if target == rootClean || strings.HasPrefix(target, rootClean+string(os.PathSeparator)) {
+			if info, err := os.Stat(target); err == nil && !info.IsDir() {
+				fileServer.ServeHTTP(w, r)
+				return
+			}
+		}
+		http.ServeFile(w, r, index)
+	}
+}
+
+func serveNamedFile(name string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if _, err := os.Stat(name); err != nil {
+			http.NotFound(w, r)
+			return
+		}
+		http.ServeFile(w, r, name)
+	}
+}
+
+func maxUploadRequestBytes(maxFileBytes int64) int64 {
+	const metadataAllowance = 1024 * 1024
+	return maxFileBytes*4/3 + metadataAllowance
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {
@@ -97,9 +155,13 @@ func securityHeaders(next http.Handler) http.Handler {
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Header().Set("X-Frame-Options", "DENY")
 		w.Header().Set("Referrer-Policy", "no-referrer")
+		w.Header().Set("X-DNS-Prefetch-Control", "off")
+		w.Header().Set("X-Download-Options", "noopen")
+		w.Header().Set("X-Permitted-Cross-Domain-Policies", "none")
 		w.Header().Set("Permissions-Policy", "camera=(), microphone=(), geolocation=(), payment=()")
+		w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; connect-src 'self' ws: wss:; img-src 'self' data:; font-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'")
 		if r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https" {
-			w.Header().Set("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+			w.Header().Set("Strict-Transport-Security", "max-age=31536000; includeSubDomains; preload")
 		}
 		next.ServeHTTP(w, r)
 	})
@@ -112,9 +174,7 @@ func cors(next http.Handler, cfg config.Config) http.Handler {
 			w.WriteHeader(http.StatusForbidden)
 			return
 		}
-		if origin == "" {
-			w.Header().Set("Access-Control-Allow-Origin", "*")
-		} else {
+		if origin != "" {
 			w.Header().Set("Access-Control-Allow-Origin", origin)
 			w.Header().Set("Access-Control-Allow-Credentials", "true")
 			w.Header().Add("Vary", "Origin")

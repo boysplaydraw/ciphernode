@@ -1,13 +1,9 @@
-FROM node:22-alpine AS deps
+FROM node:22-alpine AS web-builder
 
 WORKDIR /app
 
 COPY package*.json ./
 RUN npm ci --ignore-scripts
-
-FROM deps AS builder
-
-WORKDIR /app
 
 COPY . .
 
@@ -15,45 +11,48 @@ ENV NODE_ENV=production
 ENV CI=1
 
 RUN npx expo export --platform web --output-dir dist
-RUN npm run server:build
 
-FROM node:22-alpine AS runtime-deps
+FROM --platform=$BUILDPLATFORM golang:1.22-alpine AS go-builder
+
+WORKDIR /src
+
+COPY server/go/go.mod server/go/go.sum* ./
+RUN go mod download
+
+COPY server/go/ ./
+
+ARG TARGETOS
+ARG TARGETARCH
+RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -trimpath -ldflags="-s -w" -o /out/ciphernode-server ./cmd/ciphernode-server
+
+FROM alpine:3.20 AS runner
 
 WORKDIR /app
 
-COPY package.runtime.json ./package.json
-RUN npm install --omit=dev --ignore-scripts --no-audit --no-fund && \
-    npm cache clean --force
+RUN apk add --no-cache ca-certificates && \
+    addgroup -S ciphernode && \
+    adduser -S ciphernode -G ciphernode
 
-FROM node:22-alpine AS runner
+COPY --from=go-builder /out/ciphernode-server ./ciphernode-server
+COPY --from=web-builder /app/dist ./dist
+COPY --from=web-builder /app/assets ./assets
+COPY --from=web-builder /app/website ./website
+COPY --from=web-builder /app/app.json ./app.json
 
-WORKDIR /app
-
-COPY --from=runtime-deps /app/node_modules ./node_modules
-COPY package.runtime.json ./package.json
-COPY --from=builder /app/server_dist ./server_dist
-COPY --from=builder /app/dist ./dist
-COPY --from=builder /app/assets ./assets
-COPY --from=builder /app/website ./website
-COPY --from=builder /app/app.json ./app.json
-
-RUN addgroup -S ciphernode && adduser -S ciphernode -G ciphernode
 USER ciphernode
 
-ENV NODE_ENV=production
 ENV HOST=0.0.0.0
 ENV PORT=5000
-ENV HTTPS=true
 
-EXPOSE 5000 443 80
+EXPOSE 5000
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=20s --retries=3 \
-    CMD ["/nodejs/bin/node", "-e", "fetch('http://127.0.0.1:' + (process.env.PORT || 5000) + '/api/health').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+    CMD wget --no-verbose --tries=1 --spider http://127.0.0.1:${PORT:-5000}/api/health || exit 1
 
 LABEL org.opencontainers.image.title="CipherNode"
 LABEL org.opencontainers.image.description="End-to-end encrypted messaging relay with bundled web client"
 LABEL org.opencontainers.image.url="https://cipher-node.site"
 LABEL org.opencontainers.image.source="https://github.com/boysplaydraw/ciphernode"
-LABEL org.opencontainers.image.licenses="MIT"
+LABEL org.opencontainers.image.licenses="GPL-3.0"
 
-CMD ["/app/server_dist/index.mjs"]
+CMD ["/app/ciphernode-server"]

@@ -1,41 +1,21 @@
 # CipherNode
 
-**Uçtan uca şifreli, Tor destekli, iz bırakmayan mesajlaşma. Tek Docker imajında web arayüzü + relay server.**
+End-to-end encrypted messaging relay with bundled web client. The published Docker image runs the Go relay server and serves the Expo web app from the same container.
 
-- OpenPGP RSA-4096 şifreleme
-- Tor / .onion desteği
-- Sıfır log — mesajlar RAM'de tutulur, iletimden sonra silinir
-- Tek paket: `/app` web arayüzü ve aynı container içinde API/WebSocket relay
-- Otomatik SSL (Let's Encrypt veya self-signed)
-- P2P mesh ağı (Nostr + WebRTC)
-- Android terminal emulatoru Termux için rootsuz paket desteği
-
-🌐 [cipher-node.site](https://cipher-node.site) &nbsp;·&nbsp; ⭐ [GitHub](https://github.com/boysplaydraw/ciphernode)
-
----
-
-## Hızlı Başlangıç
+## Quick Start
 
 ```bash
 docker run -d \
   --name ciphernode \
-  -p 443:443 -p 80:80 -p 5000:5000 \
+  -p 5000:5000 \
   --restart unless-stopped \
   mero003/ciphernode:latest
 ```
 
-Tarayıcıdan `http://sunucu-ip:5000/app` veya HTTPS açıksa `https://sunucu-ip/app` ile bağlanabilirsiniz.
+Open:
 
-## Domain + Let's Encrypt
-
-```bash
-docker run -d \
-  -p 443:443 -p 80:80 \
-  -e SSL_DOMAIN=relay.example.com \
-  -e SSL_EMAIL=admin@example.com \
-  --restart unless-stopped \
-  -v ciphernode-ssl:/app/ssl \
-  mero003/ciphernode:latest
+```text
+http://server-ip:5000/app
 ```
 
 ## Docker Compose
@@ -45,50 +25,25 @@ curl -O https://raw.githubusercontent.com/boysplaydraw/ciphernode/master/docker-
 docker compose up -d
 ```
 
-## Termux Android Terminal Emulator + HTTPS Tunnel
+## HTTPS
 
-```bash
-curl -LO https://github.com/boysplaydraw/ciphernode/releases/latest/download/ciphernode-termux.tar.gz
-tar -xzf ciphernode-termux.tar.gz
-cd ciphernode-termux
-bash termux-start.sh
-```
+The Go container listens on HTTP port `5000`. For HTTPS, terminate TLS in a reverse proxy such as Caddy, Nginx, Cloudflare Tunnel, or your platform load balancer, then proxy to `http://ciphernode-relay:5000`.
 
-Termux bir Android terminal emulatorudur; root gerekmez. Varsayılan port `5000`: `http://telefon-ip:5000/app`.
+## Environment
 
-HTTPS gerekiyorsa:
-
-```bash
-bash termux-start.sh cloudflare
-```
-
-Script `https://...trycloudflare.com/app` adresi üretir.
+| Variable | Default | Description |
+|---|---|---|
+| `PORT` | `5000` | Server port inside the container |
+| `RATE_LIMIT_PER_MINUTE` | `120` | Per-client relay rate limit |
+| `MESSAGE_TTL` | `24h` | Pending message lifetime |
+| `FILE_TTL` | `24h` | Shared file lifetime |
+| `MAX_FILE_SIZE_MB` | `100` | Maximum encrypted file payload size |
+| `MAX_FILE_DOWNLOADS` | `10` | Maximum downloads per shared file |
+| `CORS_ALLOWED_ORIGINS` | empty | Optional comma-separated origin allowlist |
+| `ONION_ADDRESS` | empty | Optional external Tor hidden service address |
 
 ## Legal
 
 - Privacy Policy: https://cipher-node.site/privacy
 - Terms of Service: https://cipher-node.site/terms
 - License: GPLv3
-
-## Ortam Değişkenleri
-
-| Değişken | Varsayılan | Açıklama |
-|---|---|---|
-| `PORT` | `5000` | Sunucu portu |
-| `HTTPS` | `true` | HTTPS aktif/pasif |
-| `SSL_DOMAIN` | — | Let's Encrypt domain |
-| `SSL_EMAIL` | — | Let's Encrypt e-posta |
-| `SSL_PORT` | `443` | HTTPS portu |
-| `MESSAGE_TTL_MS` | `86400000` | Mesaj yaşam süresi (ms) |
-| `MAX_FILE_SIZE_MB` | `100` | Maks. dosya boyutu |
-| `TOR_ENABLED` | `false` | Tor Hidden Service |
-| `ONION_ADDRESS` | — | Harici Tor hidden service adresi |
-
-## İstemci Uygulamaları
-
-| Platform | İndir |
-|---|---|
-| Android | [APK](https://github.com/boysplaydraw/ciphernode/releases/latest/download/CipherNode.apk) |
-| Windows | [Setup .exe](https://github.com/boysplaydraw/ciphernode/releases/latest/download/CipherNode.Setup.1.0.0.exe) |
-| macOS | [DMG arm64](https://github.com/boysplaydraw/ciphernode/releases/latest/download/CipherNode-1.0.0-arm64.dmg) |
-| Linux | [AppImage](https://github.com/boysplaydraw/ciphernode/releases/latest/download/CipherNode-1.0.0.AppImage) |

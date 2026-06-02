@@ -30,7 +30,6 @@ electron
 src-tauri
 apps
 server-go
-server/go
 android
 ios
 attached_assets
@@ -63,3 +62,5 @@ replit.md
 Thumbs.db
 *.log
 .gocache
+**/.gocache
+*.go.[0-9]*

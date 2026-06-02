@@ -42,9 +42,9 @@
 | Katman | Teknoloji |
 |--------|-----------|
 | Mobil / Masaüstü | React Native + Expo (Android, Windows/Electron, Web) |
-| Backend | Express.js + Node.js + Socket.IO |
+| Backend | Go relay server + WebSocket |
 | Şifreleme | openpgp.js (OpenPGP uyumlu) |
-| Gerçek zamanlı | WebSocket + Socket.IO relay |
+| Gerçek zamanlı | WebSocket relay |
 | Depolama | AsyncStorage (mobil), localStorage (masaüstü) |
 
 ### Proje Yapısı
@@ -58,9 +58,9 @@
 │   ├── hooks/              # Custom React hook'ları
 │   ├── constants/          # Tema, dil, ayarlar
 │   └── navigation/         # React Navigation yapısı
-├── server/                 # Express arka uç
-│   ├── index.ts            # SSL/HTTPS + sunucu başlatma
-│   └── routes.ts           # API ve Socket.IO olayları
+├── server/go/              # Go relay backend
+│   ├── cmd/ciphernode-server
+│   └── internal/           # API, WebSocket, storage, security
 ├── electron/               # Masaüstü (Electron) ana süreç
 │   ├── main.ts             # IPC, Tor yönetimi, güncelleme
 │   ├── preload.ts          # Güvenli köprü (contextBridge)
@@ -68,9 +68,8 @@
 ├── scripts/                # Kurulum scriptleri
 │   ├── setup-ssl.sh        # Linux Let's Encrypt kurulumu
 │   └── setup-ssl-windows.ps1  # Windows win-acme SSL kurulumu
-├── docker-entrypoint.sh    # Docker otomatik SSL üretimi
 ├── docker-compose.yml      # Docker yapılandırması
-└── Dockerfile              # Çok aşamalı Alpine build
+└── Dockerfile              # Web build + Go runtime image
 ```
 
 ---
@@ -94,8 +93,8 @@ npm install
 ### Geliştirme Sunucusu
 
 ```bash
-# Terminal 1 — Express arka uç (port 5000)
-npm run server:dev
+# Terminal 1 — Go relay backend (port 5000)
+npm run go:server:dev
 
 # Terminal 2 — Expo geliştirme sunucusu
 npx expo start
@@ -104,8 +103,8 @@ npx expo start
 ### Build
 
 ```bash
-# Sunucu
-npm run server:build
+# Go server
+npm run go:server:test
 
 # Web (Expo export)
 npm run electron:build:web
@@ -142,16 +141,9 @@ docker compose -f infra/docker/docker-compose.yml --profile proxy up -d
 ### Linux (Manuel)
 
 ```bash
-# Bağımlılıkları kur
-npm install
-npm run server:build
-
-# HTTP olarak başlat
-NODE_ENV=production node server_dist/index.mjs
-
-# HTTPS + Let's Encrypt
-sudo bash scripts/setup-ssl.sh relay.example.com admin@example.com
-SSL_DOMAIN=relay.example.com node server_dist/index.mjs
+# Go relay olarak başlat
+cd server/go
+go run ./cmd/ciphernode-server
 ```
 
 ### Windows
@@ -229,24 +221,18 @@ Kullanıcılar PGP açık anahtarının SHA-256 karması ile tanımlanır (`XXXX
 
 ```env
 # Temel sunucu ayarları
-NODE_ENV=production
 PORT=5000
 HOST=0.0.0.0
 
-# SSL (isteğe bağlı)
-SSL_DOMAIN=relay.example.com   # Let's Encrypt için domain
-SSL_EMAIL=admin@example.com    # Let's Encrypt bildirimleri
-SSL_CERT=/yol/cert.pem         # Manuel sertifika yolu
-SSL_KEY=/yol/key.pem           # Manuel anahtar yolu
-HTTPS=false                    # SSL'i tamamen kapat
-
 # Mesaj & dosya ayarları
-MESSAGE_TTL_MS=86400000        # Mesaj yaşam süresi (ms)
-FILE_TTL_MS=86400000           # Dosya yaşam süresi (ms)
+MESSAGE_TTL=24h                # Mesaj yaşam süresi
+FILE_TTL=24h                   # Dosya yaşam süresi
+RATE_LIMIT_PER_MINUTE=120      # İstemci başına hız limiti
 MAX_FILE_SIZE_MB=100           # Maksimum dosya boyutu
+MAX_FILE_DOWNLOADS=10          # Dosya indirme limiti
 
 # Uygulama
-EXPO_PUBLIC_SERVER_URL=https://relay.example.com
+CORS_ALLOWED_ORIGINS=          # İsteğe bağlı origin allowlist
 ONION_ADDRESS=abc123...xyz.onion # isteğe bağlı; harici Tor hidden service adresi
 ```
 
@@ -264,7 +250,7 @@ ONION_ADDRESS=abc123...xyz.onion # isteğe bağlı; harici Tor hidden service ad
 | `POST /api/contacts/:userId` | Kişi listesini güncelle |
 | `GET /api/onion-address` | .onion adresi sorgula |
 
-### Socket.IO Olayları
+### WebSocket Olayları
 
 | Olay | Açıklama |
 |------|----------|
@@ -314,7 +300,7 @@ CipherNode aktif geliştirme aşamasındadır. Güvenlik öncelikli olarak tasar
 *Son güncelleme: Nisan 2026*
 ## Go/Tauri Migration Status
 
-This repository now contains a migration scaffold from the Node.js Socket.IO backend and Electron desktop shell toward:
+This repository contains the Go WebSocket relay backend and a Tauri desktop scaffold:
 
 ```text
 apps/
@@ -330,7 +316,7 @@ infra/
   docker/
 ```
 
-The existing mobile/web client remains compatible with the Node.js Socket.IO server by default. The new Go relay uses raw WebSocket at `/ws`; select it from clients with `EXPO_PUBLIC_RELAY_TRANSPORT=websocket`.
+The Docker image uses the Go relay and exposes raw WebSocket at `/ws`.
 
 ### Go Backend
 

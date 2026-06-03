@@ -1,4 +1,4 @@
-name: Android APK
+name: iOS IPA
 
 on:
   push:
@@ -32,23 +32,23 @@ jobs:
           eas-version: latest
           token: ${{ secrets.EXPO_TOKEN }}
 
-      - name: Build APK
-        run: eas build --platform android --profile production --non-interactive --json > eas-android.json
+      - name: Build IPA
+        run: eas build --platform ios --profile production --non-interactive --json > eas-ios.json
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
 
-      - name: Download APK from EAS
-        run: node scripts/ci/download-eas-artifact.mjs eas-android.json CipherNode.apk
+      - name: Download IPA from EAS
+        run: node scripts/ci/download-eas-artifact.mjs eas-ios.json CipherNode.ipa
 
-      - name: Upload APK artifact
+      - name: Upload IPA artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ciphernode-apk
-          path: CipherNode.apk
+          name: ciphernode-ipa
+          path: CipherNode.ipa
           if-no-files-found: error
 
       - name: Upload to GitHub Release (tag push only)
         if: startsWith(github.ref, 'refs/tags/v')
-        run: gh release upload "${GITHUB_REF_NAME}" CipherNode.apk --clobber
+        run: gh release upload "${GITHUB_REF_NAME}" CipherNode.ipa --clobber
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

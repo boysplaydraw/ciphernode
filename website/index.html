@@ -1,12 +1,12 @@
 <!DOCTYPE html>
-<html lang="tr">
+<html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>CipherNode — Şifreli, Anonim Mesajlaşma</title>
-  <meta name="description" content="Uçtan uca şifreli, kendi sunucunuzla çalışabilen mesajlaşma uygulaması. HTTPS relay varsayılan, Tor/.onion desteği isteğe bağlıdır." />
+  <title>CipherNode — Encrypted, Anonymous Messaging</title>
+  <meta name="description" content="End-to-end encrypted messaging that can run with your own relay server. HTTPS relay by default, optional Tor/.onion support." />
   <meta property="og:title" content="CipherNode" />
-  <meta property="og:description" content="Sansürsüz. İzlenemez. Özgür." />
+  <meta property="og:description" content="Uncensored. Untraceable. Free." />
   <meta property="og:type" content="website" />
   <style>
     /* ── Temel ── */
@@ -86,6 +86,28 @@
       font-size: 14px !important;
     }
     .nav-cta:hover { opacity: .9 !important; }
+    .language-switch {
+      display: inline-flex;
+      align-items: center;
+      background: rgba(255,255,255,.05);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 3px;
+      gap: 2px;
+    }
+    .lang-btn {
+      background: transparent;
+      color: var(--text2);
+      border: 0;
+      border-radius: 7px;
+      padding: 6px 10px;
+      font: 700 12px/1 var(--font);
+      cursor: pointer;
+    }
+    .lang-btn.active {
+      background: var(--cyan);
+      color: var(--bg);
+    }
 
     /* ── Hero ── */
     .hero {
@@ -452,6 +474,7 @@
     @media (max-width: 768px) {
       section { padding: 64px 0; }
       .nav-links { display: none; }
+      .language-switch { margin-left: auto; }
       .web-app-banner { text-align: center; justify-content: center; }
       .footer-inner { grid-template-columns: 1fr 1fr; }
     }
@@ -467,6 +490,10 @@
 <nav>
   <div class="nav-inner">
     <div class="nav-logo">Cipher<span>Node</span></div>
+    <div class="language-switch" aria-label="Language">
+      <button class="lang-btn" type="button" data-lang="en" aria-pressed="true">EN</button>
+      <button class="lang-btn" type="button" data-lang="tr" aria-pressed="false">TR</button>
+    </div>
     <ul class="nav-links">
       <li><a href="#features">Özellikler</a></li>
       <li><a href="#selfhost">Kendi Sunucu</a></li>
@@ -489,7 +516,7 @@
       <a href="#downloads" class="btn btn-primary">
         ⬇ Uygulamayı İndir
       </a>
-      <a id="webapp-btn" href="https://appnodes.space" target="_blank" rel="noopener" class="btn btn-web">
+      <a id="webapp-btn" href="/app/" class="btn btn-web">
         🌐 Web Uygulamasını Aç
       </a>
       <a href="https://github.com/boysplaydraw/ciphernode" target="_blank" rel="noopener" class="btn btn-secondary">
@@ -661,11 +688,11 @@
         <div class="download-desc">Ubuntu · Arch · Fedora · x64</div>
         <div class="download-badge">AppImage · x64</div>
       </a>
-      <a href="#selfhost" class="download-card">
+      <a href="/app/" class="download-card">
         <div class="download-icon">🌐</div>
         <div class="download-name">Web Tarayıcı</div>
-        <div class="download-desc">Kendi sunucunu kur → /app</div>
-        <div class="download-badge soon">Sunucu Gerekli</div>
+        <div class="download-desc">Kurulum yok · Tarayıcıdan aç</div>
+        <div class="download-badge">/app</div>
       </a>
     </div>
 
@@ -703,12 +730,12 @@
         </p>
         <br/>
         <p style="font-size:13px; color:var(--text3)">
-          Web uygulaması: <a href="https://appnodes.space" target="_blank" rel="noopener">appnodes.space</a>.
+          Web uygulaması: <a href="/app/">/app</a>.
           Kendi relay sunucunuzu kurmak için aşağıdaki "Kendi Sunucu" bölümüne bakın.
         </p>
       </div>
       <div style="display:flex; flex-direction:column; gap:12px; align-items:center;">
-        <a href="https://appnodes.space" target="_blank" rel="noopener" class="btn btn-web" style="white-space:nowrap">
+        <a href="/app/" class="btn btn-web" style="white-space:nowrap">
           🌐 Web App'i Aç →
         </a>
         <a href="https://www.torproject.org/download/" target="_blank" rel="noopener"
@@ -1023,7 +1050,7 @@
           <li><a href="#downloads">Windows İndir</a></li>
           <li><a href="#downloads">macOS İndir</a></li>
           <li><a href="#downloads">Linux İndir</a></li>
-          <li><a href="https://appnodes.space" target="_blank" rel="noopener">Web Uygulaması</a></li>
+          <li><a href="/app/">Web Uygulaması</a></li>
         </ul>
       </div>
       <div class="footer-col">
@@ -1055,6 +1082,218 @@
 </footer>
 
 <script>
+  const siteTranslations = {
+    en: {
+      title: "CipherNode — Encrypted, Anonymous Messaging",
+      description: "End-to-end encrypted messaging that can run with your own relay server. HTTPS relay by default, optional Tor/.onion support.",
+      navFeatures: "Features",
+      navSelfhost: "Self Host",
+      navFaq: "FAQ",
+      navDownload: "Download →",
+      heroBadge: "E2E ENCRYPTED &nbsp;·&nbsp; HTTPS RELAY &nbsp;·&nbsp; OPTIONAL TOR",
+      heroTitle: "Uncensored.<br/>Untraceable. Free.",
+      heroSub: "OpenPGP RSA-4096 encryption, self-hosted relay support, and optional Tor/.onion-ready messaging.",
+      heroDownload: "⬇ Download App",
+      heroWeb: "🌐 Open Web App",
+      heroGithub: "⭐ View on GitHub",
+      statEncryption: "Encryption Strength",
+      statLogs: "Server Logs",
+      statE2ee: "End-to-End Encryption",
+      statNetwork: "External Network Access",
+      statPlatformsValue: "4 platforms",
+      featuresLabel: "Features",
+      featuresTitle: "Privacy is the standard, not a compromise",
+      featuresDesc: "Every feature was designed from the ground up with privacy in mind.",
+      torTitle: "Tor and .onion Support",
+      torDesc: "HTTPS relay is the default path. Users who want Tor can connect with Tor Browser or Orbot; server operators can publish a .onion address through ONION_ADDRESS.",
+      p2pTitle: "P2P Messaging",
+      p2pDesc: "In P2P-only mode the relay server is bypassed. Messages are delivered only while the recipient is online. Offline queues are optional.",
+      filesTitle: "Encrypted File Sharing",
+      filesDesc: "Files are encrypted client-side before upload. Download limits and 24-hour TTL. The AES key is wrapped with the recipient's PGP key.",
+      ghostTitle: "Ghost Mode",
+      ghostDesc: "Typing indicators and read receipts are not sent. The other side cannot know when you are typing.",
+      crossTitle: "Cross Platform",
+      crossDesc: "The same experience on Android, iOS, Windows, macOS, Linux, and web browsers. Electron desktop, React Native mobile, Expo web.",
+      selfTitleFeature: "Your Own Server",
+      selfDescFeature: "Run your own relay in minutes with Docker, Termux, CasaOS, or Unraid. No registration, no tracking, full control.",
+      downloadsLabel: "Download",
+      downloadsTitle: "For every platform",
+      downloadsDesc: "Download for your preferred platform and start without extra setup.",
+      iosSoon: "Soon",
+      windowsInstall: "Windows 10/11 · Installer",
+      windowsPortable: "Windows 10/11 · Portable",
+      noInstall: "No install required",
+      webBrowser: "Web Browser",
+      webDesc: "No install · Open in browser",
+      serverBinaryTitle: "🖥️ Relay Server Binary",
+      serverBinaryDesc: "No Node.js required. Download, run, and your server is ready.",
+      webBannerTitle: "🌐 Use the Web App",
+      webBannerText: "Open the web app from your browser after setting up your relay server. For privacy, we recommend Tor Browser; traffic will route through Tor automatically.",
+      webBannerNote: 'Web app: <a href="/app/">/app</a>. See the "Self Host" section below to run your own relay.',
+      openWebApp: "🌐 Open Web App →",
+      downloadTor: "🧅 Download Tor Browser",
+      howLabel: "How It Works",
+      howTitle: "Simple and secure",
+      selfhostLabel: "Self Host",
+      selfhostTitle: "You stay in control",
+      selfhostDesc: "Run the relay server on your own infrastructure. Everyone can connect to your server, or they can run their own.",
+      infraLabel: "Supported Infrastructure",
+      faqLabel: "FAQ",
+      faqTitle: "Frequently Asked Questions",
+      footerProducts: "Products",
+      footerInstall: "Setup",
+      footerLegal: "Legal",
+      footerCopy: "© 2026 CipherNode — Open Source &nbsp;·&nbsp; "
+    },
+    tr: {
+      title: "CipherNode — Şifreli, Anonim Mesajlaşma",
+      description: "Uçtan uca şifreli, kendi sunucunuzla çalışabilen mesajlaşma uygulaması. HTTPS relay varsayılan, Tor/.onion desteği isteğe bağlıdır.",
+      navFeatures: "Özellikler",
+      navSelfhost: "Kendi Sunucu",
+      navFaq: "SSS",
+      navDownload: "İndir →",
+      heroBadge: "E2E ŞİFRELİ &nbsp;·&nbsp; HTTPS RELAY &nbsp;·&nbsp; OPSİYONEL TOR",
+      heroTitle: "Sansürsüz.<br/>İzlenemez. Özgür.",
+      heroSub: "OpenPGP RSA-4096 şifreleme, kendi relay sunucunuzu kurma desteği ve isteğe bağlı Tor/.onion kullanımına uygun mesajlaşma uygulaması.",
+      heroDownload: "⬇ Uygulamayı İndir",
+      heroWeb: "🌐 Web Uygulamasını Aç",
+      heroGithub: "⭐ GitHub'da İncele",
+      statEncryption: "Şifreleme Gücü",
+      statLogs: "Sunucu Kaydı",
+      statE2ee: "Uçtan Uca Şifreleme",
+      statNetwork: "Dış Ağ Erişimi",
+      statPlatformsValue: "4 platform",
+      featuresLabel: "Özellikler",
+      featuresTitle: "Gizlilik, uzlaşı değil bir standart",
+      featuresDesc: "Her özellik sıfırdan gizlilik göz önünde bulundurularak tasarlandı.",
+      torTitle: "Tor ve .onion Desteği",
+      torDesc: "Varsayılan yol HTTPS relay'dir. Tor kullanmak isteyenler Tor Browser veya Orbot ile bağlanabilir; sunucu operatörü .onion adresini ONION_ADDRESS ile uygulamada gösterebilir.",
+      p2pTitle: "P2P Mesajlaşma",
+      p2pDesc: "Sadece P2P modunda relay sunucusu devre dışı kalır. Mesajlar sadece alıcı çevrimiçiyken iletilir. Çevrimdışı kuyruk opsiyoneldir.",
+      filesTitle: "Şifreli Dosya Paylaşımı",
+      filesDesc: "Dosyalar client-side şifrelendikten sonra yüklenir. İndirme limiti ve 24 saatlik TTL. AES anahtarı alıcının PGP anahtarıyla sarmalanır.",
+      ghostTitle: "Hayalet Modu",
+      ghostDesc: "Yazıyor göstergesi ve okundu bilgisi gönderilmez. Karşı taraf ne zaman yazdığınızı bilemez.",
+      crossTitle: "Çapraz Platform",
+      crossDesc: "Android, iOS, Windows, macOS, Linux ve Web tarayıcısında aynı deneyim. Electron masaüstü, React Native mobil, Expo web.",
+      selfTitleFeature: "Kendi Sunucun",
+      selfDescFeature: "Docker, Termux, CasaOS, Unraid ile dakikalar içinde kendi relay sunucunuzu kurun. Kayıt yok, izleme yok, tam kontrol.",
+      downloadsLabel: "İndir",
+      downloadsTitle: "Tüm platformlar için",
+      downloadsDesc: "Tercih ettiğiniz platformda indirin ve kurulum gerekmeden kullanmaya başlayın.",
+      iosSoon: "Yakında",
+      windowsInstall: "Windows 10/11 · Kurulum",
+      windowsPortable: "Windows 10/11 · Kurulum gerektirmez",
+      noInstall: "Kurulum gerektirmez",
+      webBrowser: "Web Tarayıcı",
+      webDesc: "Kurulum yok · Tarayıcıdan aç",
+      serverBinaryTitle: "🖥️ Relay Sunucu Binary",
+      serverBinaryDesc: "Node.js gerektirmez. İndirin, çalıştırın — sunucunuz hazır.",
+      webBannerTitle: "🌐 Web Uygulamasını Kullan",
+      webBannerText: "Kendi relay sunucunuzu kurduktan sonra web uygulamasına tarayıcıdan erişebilirsiniz. Gizlilik için Tor Browser'da açmanızı öneririz; tüm trafik otomatik olarak Tor'a yönlenir.",
+      webBannerNote: 'Web uygulaması: <a href="/app/">/app</a>. Kendi relay sunucunuzu kurmak için aşağıdaki "Kendi Sunucu" bölümüne bakın.',
+      openWebApp: "🌐 Web App'i Aç →",
+      downloadTor: "🧅 Tor Browser İndir",
+      howLabel: "Nasıl Çalışır",
+      howTitle: "Sade ve güvenli",
+      selfhostLabel: "Kendi Sunucu",
+      selfhostTitle: "Tam kontrol sizde",
+      selfhostDesc: "Relay sunucusunu kendi altyapınızda çalıştırın. Herkes sizin sunucunuza bağlanabilir, ya da kendi sunucusunu kurabilir.",
+      infraLabel: "Desteklenen Altyapılar",
+      faqLabel: "SSS",
+      faqTitle: "Sık Sorulan Sorular",
+      footerProducts: "Ürünler",
+      footerInstall: "Kurulum",
+      footerLegal: "Yasal",
+      footerCopy: "© 2026 CipherNode — Açık Kaynak &nbsp;·&nbsp; "
+    }
+  };
+
+  const i18nMap = [
+    [".nav-links li:nth-child(1) a", "navFeatures"],
+    [".nav-links li:nth-child(2) a", "navSelfhost"],
+    [".nav-links li:nth-child(3) a", "navFaq"],
+    [".nav-cta", "navDownload"],
+    [".hero-badge", "heroBadge", true],
+    [".hero h1", "heroTitle", true],
+    [".hero-sub", "heroSub"],
+    [".hero-buttons .btn-primary", "heroDownload"],
+    [".hero-buttons .btn-web", "heroWeb"],
+    [".hero-buttons .btn-secondary", "heroGithub"],
+    [".stats-inner > div:nth-child(1) .stat-label", "statEncryption"],
+    [".stats-inner > div:nth-child(2) .stat-label", "statLogs"],
+    [".stats-inner > div:nth-child(3) .stat-label", "statE2ee"],
+    [".stats-inner > div:nth-child(4) .stat-label", "statNetwork"],
+    [".stats-inner > div:nth-child(5) .stat-value", "statPlatformsValue"],
+    ["#features .section-label", "featuresLabel"],
+    ["#features .section-title", "featuresTitle"],
+    ["#features .section-desc", "featuresDesc"],
+    [".feature-card:nth-child(2) .feature-title", "torTitle"],
+    [".feature-card:nth-child(2) .feature-desc", "torDesc"],
+    [".feature-card:nth-child(3) .feature-title", "p2pTitle"],
+    [".feature-card:nth-child(3) .feature-desc", "p2pDesc"],
+    [".feature-card:nth-child(4) .feature-title", "filesTitle"],
+    [".feature-card:nth-child(4) .feature-desc", "filesDesc"],
+    [".feature-card:nth-child(6) .feature-title", "ghostTitle"],
+    [".feature-card:nth-child(6) .feature-desc", "ghostDesc"],
+    [".feature-card:nth-child(7) .feature-title", "crossTitle"],
+    [".feature-card:nth-child(7) .feature-desc", "crossDesc"],
+    [".feature-card:nth-child(8) .feature-title", "selfTitleFeature"],
+    [".feature-card:nth-child(8) .feature-desc", "selfDescFeature"],
+    ["#downloads .section-label", "downloadsLabel"],
+    ["#downloads .section-title", "downloadsTitle"],
+    ["#downloads .section-desc", "downloadsDesc"],
+    [".downloads-grid:first-of-type .download-card:nth-child(2) .download-badge", "iosSoon"],
+    [".downloads-grid:first-of-type .download-card:nth-child(3) .download-desc", "windowsInstall"],
+    [".downloads-grid:first-of-type .download-card:nth-child(4) .download-desc", "windowsPortable"],
+    [".downloads-grid:first-of-type .download-card:nth-child(8) .download-name", "webBrowser"],
+    [".downloads-grid:first-of-type .download-card:nth-child(8) .download-desc", "webDesc"],
+    ["#downloads h3", "serverBinaryTitle"],
+    ["#downloads h3 + p", "serverBinaryDesc"],
+    [".web-app-banner h3", "webBannerTitle"],
+    [".web-app-banner p:nth-of-type(1)", "webBannerText"],
+    [".web-app-banner p:nth-of-type(2)", "webBannerNote", true],
+    [".web-app-banner .btn-web", "openWebApp"],
+    [".web-app-banner .btn-secondary", "downloadTor"],
+    ["section:nth-of-type(4) .section-label", "howLabel"],
+    ["section:nth-of-type(4) .section-title", "howTitle"],
+    ["#selfhost .section-label", "selfhostLabel"],
+    ["#selfhost .section-title", "selfhostTitle"],
+    ["#selfhost .section-desc", "selfhostDesc"],
+    ["#selfhost > .container > div:last-child .section-label", "infraLabel"],
+    ["#faq .section-label", "faqLabel"],
+    ["#faq .section-title", "faqTitle"],
+    [".footer-col:nth-child(2) h4", "footerProducts"],
+    [".footer-col:nth-child(3) h4", "footerInstall"],
+    [".footer-col:nth-child(4) h4", "footerLegal"]
+  ];
+
+  function applyLanguage(lang) {
+    const dict = siteTranslations[lang] || siteTranslations.en;
+    document.documentElement.lang = lang;
+    document.title = dict.title;
+    document.querySelector('meta[name="description"]')?.setAttribute("content", dict.description);
+    document.querySelector('meta[property="og:description"]')?.setAttribute("content", lang === "tr" ? "Sansürsüz. İzlenemez. Özgür." : "Uncensored. Untraceable. Free.");
+    i18nMap.forEach(([selector, key, html]) => {
+      const el = document.querySelector(selector);
+      if (!el || !dict[key]) return;
+      if (html) el.innerHTML = dict[key];
+      else el.textContent = dict[key];
+    });
+    document.querySelectorAll(".lang-btn").forEach((button) => {
+      const active = button.dataset.lang === lang;
+      button.classList.toggle("active", active);
+      button.setAttribute("aria-pressed", String(active));
+    });
+    localStorage.setItem("ciphernode:site-language", lang);
+  }
+
+  document.querySelectorAll(".lang-btn").forEach((button) => {
+    button.addEventListener("click", () => applyLanguage(button.dataset.lang));
+  });
+
+  applyLanguage(localStorage.getItem("ciphernode:site-language") || "en");
+
   /* FAQ accordion */
   function toggleFaq(el) {
     const item = el.parentElement;

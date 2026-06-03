@@ -13,6 +13,7 @@ services:
       MESSAGE_TTL: "24h"
       FILE_TTL: "24h"
       ONION_ADDRESS: "${ONION_ADDRESS:-}"
+      CORS_ALLOWED_ORIGINS: "${CORS_ALLOWED_ORIGINS:-}"
     ports:
       - "5000:5000"
     security_opt:
@@ -25,10 +26,12 @@ services:
       context: ../..
       dockerfile: infra/docker/Dockerfile.web
       args:
-        EXPO_PUBLIC_SERVER_URL: "${EXPO_PUBLIC_SERVER_URL:-http://localhost:5000}"
+        EXPO_PUBLIC_SERVER_URL: "${EXPO_PUBLIC_SERVER_URL:-}"
+        EXPO_PUBLIC_WS_URL: "${EXPO_PUBLIC_WS_URL:-}"
         EXPO_PUBLIC_RELAY_TRANSPORT: "${EXPO_PUBLIC_RELAY_TRANSPORT:-websocket}"
     environment:
-      EXPO_PUBLIC_SERVER_URL: "${EXPO_PUBLIC_SERVER_URL:-http://localhost:5000}"
+      EXPO_PUBLIC_SERVER_URL: "${EXPO_PUBLIC_SERVER_URL:-}"
+      EXPO_PUBLIC_WS_URL: "${EXPO_PUBLIC_WS_URL:-}"
       EXPO_PUBLIC_RELAY_TRANSPORT: "${EXPO_PUBLIC_RELAY_TRANSPORT:-websocket}"
     ports:
       - "8080:80"

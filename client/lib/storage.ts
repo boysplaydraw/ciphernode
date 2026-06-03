@@ -503,9 +503,9 @@ export async function updateTorSettings(
 export async function getLanguage(): Promise<"tr" | "en"> {
   try {
     const stored = await AsyncStorage.getItem(LANGUAGE_KEY);
-    return (stored as "tr" | "en") || "tr";
+    return (stored as "tr" | "en") || "en";
   } catch {
-    return "tr";
+    return "en";
   }
 }
 

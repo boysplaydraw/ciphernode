@@ -19,7 +19,7 @@ class GoWebSocketRelay implements SocketLike {
   connected = false;
 
   constructor(baseUrl: string) {
-    this.ws = new WebSocket(toWsUrl(baseUrl));
+    this.ws = new WebSocket(getWsUrl(baseUrl));
     this.ws.onopen = () => {
       this.connected = true;
       this.dispatchLocal("connect");
@@ -118,6 +118,15 @@ function toWsUrl(base: string): string {
   const url = new URL("/ws", base);
   url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
   return url.toString();
+}
+
+function getWsUrl(base: string): string {
+  const configuredWsUrl =
+    process.env.EXPO_PUBLIC_WS_URL || process.env.WS_URL || null;
+  if (configuredWsUrl?.trim()) {
+    return configuredWsUrl.trim();
+  }
+  return toWsUrl(base);
 }
 
 function cryptoRandom(): string {

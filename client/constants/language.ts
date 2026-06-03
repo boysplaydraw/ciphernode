@@ -203,7 +203,7 @@ export const translations = {
   },
 } as const;
 
-let currentLanguage: Language = "tr";
+let currentLanguage: Language = "en";
 
 export function setLanguage(lang: Language) {
   currentLanguage = lang;

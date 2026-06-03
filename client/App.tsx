@@ -61,7 +61,7 @@ import {
 export default function App() {
   const [isLoading, setIsLoading] = useState(true);
   const [showOnboarding, setShowOnboarding] = useState(false);
-  const [language, setLanguageState] = useState<Language>("tr");
+  const [language, setLanguageState] = useState<Language>("en");
   const [criticalError, setCriticalError] = useState<string | null>(null);
   const [isLocked, setIsLocked] = useState(false);
   const [biometricEnabled, setBiometricEnabled] = useState(false);

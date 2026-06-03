@@ -8,7 +8,7 @@ The web app still needs a relay server for messaging. Run the Go relay somewhere
 docker run -d \
   --name ciphernode-relay \
   -p 5000:5000 \
-  -e CORS_ALLOWED_ORIGINS=https://appnodes.space \
+  -e CORS_ALLOWED_ORIGINS=https://your-hostinger-domain.com \
   --restart unless-stopped \
   mero003/ciphernode:latest
 ```
@@ -24,14 +24,15 @@ https://relay.your-domain.com
 PowerShell:
 
 ```powershell
-$env:EXPO_PUBLIC_SERVER_URL="https://appnodes.space"
+$env:API_URL="https://relay.your-domain.com"
+$env:WS_URL="wss://relay.your-domain.com/ws"
 npm.cmd run web:hostinger
 ```
 
 Bash:
 
 ```bash
-EXPO_PUBLIC_SERVER_URL=https://appnodes.space npm run web:hostinger
+API_URL=https://relay.your-domain.com WS_URL=wss://relay.your-domain.com/ws npm run web:hostinger
 ```
 
 The output is created in:
@@ -44,6 +45,7 @@ Upload the contents of `hostinger-web/` to Hostinger `public_html/`. Upload the 
 
 ## Important
 
-- `EXPO_PUBLIC_SERVER_URL` must be the relay URL, not the Hostinger static site URL.
+- `API_URL` must be the relay URL, not the Hostinger static site URL.
+- `WS_URL` should point to the relay WebSocket endpoint, usually the same relay domain plus `/ws`.
 - The relay must allow the Hostinger origin with `CORS_ALLOWED_ORIGINS`.
 - The generated `.htaccess` handles single-page app fallback on Hostinger/Apache.

@@ -365,7 +365,6 @@ export default function AddContactScreen() {
               <QRCode
                 value={JSON.stringify({
                   id: identity.id,
-                  pk: identity.publicKey,
                   npk: identity.nostrPubkey ?? "",
                 })}
                 size={180}

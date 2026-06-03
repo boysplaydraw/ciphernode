@@ -61,6 +61,9 @@ export interface AppSettings {
 export interface PrivacySettings {
   screenProtection: boolean;
   biometricLock: boolean;
+  appPinEnabled: boolean;
+  appPinHash: string;
+  appPinSalt: string;
   autoMetadataScrubbing: boolean;
   steganographyMode: boolean;
   ghostMode: boolean;
@@ -85,6 +88,9 @@ const DEFAULT_SETTINGS: AppSettings = {
 const DEFAULT_PRIVACY_SETTINGS: PrivacySettings = {
   screenProtection: false,
   biometricLock: false,
+  appPinEnabled: false,
+  appPinHash: "",
+  appPinSalt: "",
   autoMetadataScrubbing: true,
   steganographyMode: false,
   ghostMode: false,

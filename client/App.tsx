@@ -3,6 +3,7 @@ import {
   StyleSheet,
   View,
   Text,
+  TextInput,
   ActivityIndicator,
   AppState,
   AppStateStatus,
@@ -55,8 +56,8 @@ import {
 import { getPrivacySettings } from "@/lib/storage";
 import {
   isElectron,
-  electronBiometricAuthenticate,
 } from "@/lib/electron-bridge";
+import { hashPin, isValidPin } from "@/lib/app-lock";
 
 export default function App() {
   const [isLoading, setIsLoading] = useState(true);
@@ -65,6 +66,11 @@ export default function App() {
   const [criticalError, setCriticalError] = useState<string | null>(null);
   const [isLocked, setIsLocked] = useState(false);
   const [biometricEnabled, setBiometricEnabled] = useState(false);
+  const [pinEnabled, setPinEnabled] = useState(false);
+  const [pinHash, setPinHash] = useState("");
+  const [pinSalt, setPinSalt] = useState("");
+  const [pinInput, setPinInput] = useState("");
+  const [pinError, setPinError] = useState("");
   const appState = useRef<AppStateStatus>(AppState.currentState);
   const biometricUnlockRef = useRef<(() => void) | null>(null);
 
@@ -103,11 +109,19 @@ export default function App() {
     const handleAppStateChange = async (nextState: AppStateStatus) => {
       if (appState.current === "background" && nextState === "active") {
         const priv = await getPrivacySettings();
-        if (priv.biometricLock) {
-          setBiometricEnabled(true);
+        const shouldUseBiometric =
+          priv.biometricLock && Platform.OS !== "web" && !isElectron();
+        const shouldUsePin =
+          priv.appPinEnabled && !!priv.appPinHash && !!priv.appPinSalt;
+        if (shouldUseBiometric || shouldUsePin) {
+          setBiometricEnabled(shouldUseBiometric);
+          setPinEnabled(shouldUsePin);
+          setPinHash(priv.appPinHash);
+          setPinSalt(priv.appPinSalt);
           setIsLocked(true);
         } else {
           setBiometricEnabled(false);
+          setPinEnabled(false);
         }
       }
       appState.current = nextState;
@@ -180,9 +194,16 @@ export default function App() {
         } catch {}
       }
 
-      // Biyometrik kilit — uygulama açılışında kilitle
-      if (priv.biometricLock) {
-        setBiometricEnabled(true);
+      // App lock — biometric is native-mobile only; PIN works on all platforms.
+      const shouldUseBiometric =
+        priv.biometricLock && Platform.OS !== "web" && !isElectron();
+      const shouldUsePin =
+        priv.appPinEnabled && !!priv.appPinHash && !!priv.appPinSalt;
+      if (shouldUseBiometric || shouldUsePin) {
+        setBiometricEnabled(shouldUseBiometric);
+        setPinEnabled(shouldUsePin);
+        setPinHash(priv.appPinHash);
+        setPinSalt(priv.appPinSalt);
         setIsLocked(true);
       }
 
@@ -261,14 +282,7 @@ export default function App() {
 
   const handleBiometricUnlock = useCallback(async () => {
     try {
-      if (isElectron()) {
-        const result = await electronBiometricAuthenticate(
-          language === "tr"
-            ? "CipherNode'u açmak için doğrulayın"
-            : "Authenticate to open CipherNode",
-        );
-        if (result.success) setIsLocked(false);
-      } else {
+      if (Platform.OS !== "web" && !isElectron()) {
         const promptMessage =
           language === "tr"
             ? "CipherNode'u açmak için doğrulayın"
@@ -294,6 +308,23 @@ export default function App() {
     } catch {}
   }, [language]);
 
+  const handlePinUnlock = useCallback(async () => {
+    if (!isValidPin(pinInput) || !pinHash || !pinSalt) {
+      setPinError(language === "tr" ? "Geçersiz PIN" : "Invalid PIN");
+      return;
+    }
+
+    const candidate = await hashPin(pinInput, pinSalt);
+    if (candidate === pinHash) {
+      setPinInput("");
+      setPinError("");
+      setIsLocked(false);
+      return;
+    }
+
+    setPinError(language === "tr" ? "PIN hatalı" : "Incorrect PIN");
+  }, [language, pinHash, pinInput, pinSalt]);
+
   // Ref'i güncel tut — isLocked effect'i döngüye girmeden handler'ı çağırabilsin
   biometricUnlockRef.current = handleBiometricUnlock;
 
@@ -302,10 +333,17 @@ export default function App() {
   // görünür olana kadar bekliyoruz. Arka plandan dönüşlerde isLoading
   // zaten false olduğundan anında tetiklenir.
   useEffect(() => {
-    if (isLoading || !isLocked || showOnboarding || criticalError) return;
+    if (
+      isLoading ||
+      !isLocked ||
+      showOnboarding ||
+      criticalError ||
+      !biometricEnabled
+    )
+      return;
     const timer = setTimeout(() => biometricUnlockRef.current?.(), 500);
     return () => clearTimeout(timer);
-  }, [isLoading, isLocked, showOnboarding, criticalError]);
+  }, [biometricEnabled, isLoading, isLocked, showOnboarding, criticalError]);
 
   const handleSetLanguage = useCallback((lang: Language) => {
     setLanguageState(lang);
@@ -362,20 +400,56 @@ export default function App() {
                       <Text style={styles.lockAppName}>CipherNode</Text>
                       <Text style={styles.lockPrompt}>
                         {language === "tr"
-                          ? "Devam etmek için kimliğinizi doğrulayın"
-                          : "Authenticate to continue"}
+                          ? pinEnabled
+                            ? "Devam etmek için PIN girin"
+                            : "Devam etmek için kimliğinizi doğrulayın"
+                          : pinEnabled
+                            ? "Enter PIN to continue"
+                            : "Authenticate to continue"}
                       </Text>
-                      <Pressable
-                        onPress={handleBiometricUnlock}
-                        style={({ pressed }) => [
-                          styles.unlockButton,
-                          pressed && styles.unlockButtonPressed,
-                        ]}
-                      >
-                        <Text style={styles.unlockButtonText}>
-                          {language === "tr" ? "🔐 Kilidi Aç" : "🔐 Unlock"}
-                        </Text>
-                      </Pressable>
+                      {pinEnabled ? (
+                        <>
+                          <TextInput
+                            value={pinInput}
+                            onChangeText={(value) => {
+                              setPinInput(value.replace(/\D/g, "").slice(0, 8));
+                              setPinError("");
+                            }}
+                            keyboardType="number-pad"
+                            secureTextEntry
+                            placeholder="PIN"
+                            placeholderTextColor={Colors.dark.textDisabled}
+                            style={styles.pinInput}
+                            onSubmitEditing={handlePinUnlock}
+                          />
+                          {pinError ? (
+                            <Text style={styles.pinError}>{pinError}</Text>
+                          ) : null}
+                          <Pressable
+                            onPress={handlePinUnlock}
+                            style={({ pressed }) => [
+                              styles.unlockButton,
+                              pressed && styles.unlockButtonPressed,
+                            ]}
+                          >
+                            <Text style={styles.unlockButtonText}>
+                              {language === "tr" ? "Kilidi Aç" : "Unlock"}
+                            </Text>
+                          </Pressable>
+                        </>
+                      ) : (
+                        <Pressable
+                          onPress={handleBiometricUnlock}
+                          style={({ pressed }) => [
+                            styles.unlockButton,
+                            pressed && styles.unlockButtonPressed,
+                          ]}
+                        >
+                          <Text style={styles.unlockButtonText}>
+                            {language === "tr" ? "Kilidi Aç" : "Unlock"}
+                          </Text>
+                        </Pressable>
+                      )}
                     </View>
                   </Modal>
                 </LowPowerProvider>
@@ -431,5 +505,24 @@ const styles = StyleSheet.create({
     color: "#000",
     fontSize: 16,
     fontWeight: "600",
+  },
+  pinInput: {
+    width: 220,
+    backgroundColor: Colors.dark.backgroundSecondary,
+    borderWidth: 1,
+    borderColor: Colors.dark.border,
+    borderRadius: 10,
+    color: Colors.dark.text,
+    fontSize: 22,
+    letterSpacing: 8,
+    paddingHorizontal: 18,
+    paddingVertical: 12,
+    textAlign: "center",
+    marginBottom: 12,
+  },
+  pinError: {
+    color: Colors.dark.error,
+    fontSize: 13,
+    marginBottom: 16,
   },
 });

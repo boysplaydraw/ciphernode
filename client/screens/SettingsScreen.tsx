@@ -58,13 +58,13 @@ import {
   electronOnTorStatus,
   electronOpenExternal,
   electronBiometricIsAvailable,
-  electronBiometricAuthenticate,
   electronResetApp,
 } from "@/lib/electron-bridge";
 import * as Updates from "expo-updates";
 import { setGhostMode } from "@/lib/socket";
 import { useLowPower } from "@/constants/lowPower";
 import type { SettingsStackParamList } from "@/navigation/SettingsStackNavigator";
+import { createPinSalt, hashPin, isValidPin } from "@/lib/app-lock";
 
 type NavigationProp = NativeStackNavigationProp<
   SettingsStackParamList,
@@ -157,6 +157,9 @@ export default function SettingsScreen() {
   const [privacySettings, setPrivacySettings] = useState<PrivacySettings>({
     screenProtection: false,
     biometricLock: false,
+    appPinEnabled: false,
+    appPinHash: "",
+    appPinSalt: "",
     autoMetadataScrubbing: true,
     steganographyMode: false,
     ghostMode: false,
@@ -178,7 +181,11 @@ export default function SettingsScreen() {
   const [showTorModal, setShowTorModal] = useState(false);
   const [torProxyInput, setTorProxyInput] = useState("127.0.0.1:9050");
   const [showImportModal, setShowImportModal] = useState(false);
+  const [showPinModal, setShowPinModal] = useState(false);
   const [importBackupInput, setImportBackupInput] = useState("");
+  const [pinInput, setPinInput] = useState("");
+  const [pinConfirmInput, setPinConfirmInput] = useState("");
+  const [pinError, setPinError] = useState("");
   const [torStatusMessage, setTorStatusMessage] = useState<string>("");
   const [torBootstrapProgress, setTorBootstrapProgress] = useState(0);
 
@@ -219,56 +226,25 @@ export default function SettingsScreen() {
       if ((COMING_SOON_FLAGS as readonly string[]).includes(key)) return;
 
       if (key === "biometricLock" && value) {
-        // ── Electron: Touch ID / Windows Hello ──────────────────────────
-        if (isElectron()) {
-          if (!biometricAvailableDesktop) {
-            Alert.alert(
-              currentLanguage === "tr" ? "Biyometrik Kilit" : "Biometric Lock",
-              currentLanguage === "tr"
-                ? "Bu cihazda Touch ID veya Windows Hello desteklenmiyor."
-                : "Touch ID or Windows Hello is not available on this device.",
-            );
-            return;
-          }
-          const result = await electronBiometricAuthenticate(
-            currentLanguage === "tr"
-              ? "CipherNode biyometrik kilidi etkinleştirmek için doğrulayın"
-              : "Authenticate to enable CipherNode biometric lock",
-          );
-          if (!result.success) {
-            Alert.alert(
-              currentLanguage === "tr"
-                ? "Doğrulama Başarısız"
-                : "Authentication Failed",
-              result.error ||
-                (currentLanguage === "tr"
-                  ? "Biyometrik doğrulama reddedildi."
-                  : "Biometric authentication was rejected."),
-            );
-            return;
-          }
-        } else if (Platform.OS === "web") {
-          // Web — desteklenmiyor
+        if (Platform.OS === "web" || isElectron()) {
           Alert.alert(
             currentLanguage === "tr" ? "Biyometrik Kilit" : "Biometric Lock",
             currentLanguage === "tr"
-              ? "Bu özellik sadece mobil cihazlarda ve masaüstü uygulamada kullanılabilir."
-              : "This feature is only available on mobile devices and the desktop app.",
+              ? "Biyometrik kilit sadece mobil uygulamada kullanılabilir. Web ve masaüstü için PIN Kilidi kullanın."
+              : "Biometric lock is only available on mobile. Use PIN Lock for web and desktop.",
           );
           return;
-        } else {
-          // Mobil: expo-local-authentication (biyometrik yoksa PIN/şifre ekranı açar)
-          const result = await LocalAuthentication.authenticateAsync({
-            promptMessage:
-              currentLanguage === "tr"
-                ? "Biyometrik kilidi etkinleştirmek için doğrulayın"
-                : "Authenticate to enable biometric lock",
-            fallbackLabel:
-              currentLanguage === "tr" ? "PIN / Şifre" : "PIN / Password",
-            disableDeviceFallback: false,
-          });
-          if (!result.success) return;
         }
+        const result = await LocalAuthentication.authenticateAsync({
+          promptMessage:
+            currentLanguage === "tr"
+              ? "Biyometrik kilidi etkinleştirmek için doğrulayın"
+              : "Authenticate to enable biometric lock",
+          fallbackLabel:
+            currentLanguage === "tr" ? "PIN / Şifre" : "PIN / Password",
+          disableDeviceFallback: false,
+        });
+        if (!result.success) return;
       }
 
       // Ekran koruması: screenshot/kayıt engelle veya serbest bırak
@@ -337,6 +313,55 @@ export default function SettingsScreen() {
     },
     [currentLanguage, biometricAvailableDesktop, setLowPowerMode],
   );
+
+  const handlePinToggle = async (enabled: boolean) => {
+    if (!enabled) {
+      const updates = {
+        appPinEnabled: false,
+        appPinHash: "",
+        appPinSalt: "",
+      };
+      setPrivacySettings((prev) => ({ ...prev, ...updates }));
+      await updatePrivacySettings(updates);
+      return;
+    }
+
+    setPinInput("");
+    setPinConfirmInput("");
+    setPinError("");
+    setShowPinModal(true);
+  };
+
+  const handleSavePin = async () => {
+    if (!isValidPin(pinInput)) {
+      setPinError(
+        currentLanguage === "tr"
+          ? "PIN 4-8 rakam olmalı."
+          : "PIN must be 4-8 digits.",
+      );
+      return;
+    }
+    if (pinInput !== pinConfirmInput) {
+      setPinError(
+        currentLanguage === "tr" ? "PIN eşleşmiyor." : "PINs do not match.",
+      );
+      return;
+    }
+
+    const salt = createPinSalt();
+    const pinHash = await hashPin(pinInput, salt);
+    const updates = {
+      appPinEnabled: true,
+      appPinHash: pinHash,
+      appPinSalt: salt,
+    };
+    setPrivacySettings((prev) => ({ ...prev, ...updates }));
+    await updatePrivacySettings(updates);
+    setShowPinModal(false);
+    setPinInput("");
+    setPinConfirmInput("");
+    setPinError("");
+  };
 
   const timerLabels: Record<number, string> = {
     0: currentLanguage === "tr" ? "Kapalı" : "Off",
@@ -940,14 +965,10 @@ export default function SettingsScreen() {
                 currentLanguage === "tr" ? "Biyometrik Kilit" : "Biometric Lock"
               }
               subtitle={
-                isElectron()
-                  ? biometricAvailableDesktop
-                    ? currentLanguage === "tr"
-                      ? "Touch ID / Windows Hello ile kilitle"
-                      : "Lock with Touch ID / Windows Hello"
-                    : currentLanguage === "tr"
-                      ? "Bu cihazda desteklenmiyor"
-                      : "Not supported on this device"
+                Platform.OS === "web" || isElectron()
+                  ? currentLanguage === "tr"
+                    ? "Sadece mobilde kullanılabilir. Web/desktop için PIN Kilidi kullanın."
+                    : "Available on mobile only. Use PIN Lock for web/desktop."
                   : biometricAvailable
                     ? biometricHardware
                       ? currentLanguage === "tr"
@@ -974,11 +995,33 @@ export default function SettingsScreen() {
                       : Colors.dark.textSecondary
                   }
                   disabled={
-                    isElectron()
-                      ? !biometricAvailableDesktop
-                      : Platform.OS === "web"
-                        ? true
-                        : !biometricAvailable
+                    Platform.OS === "web" || isElectron()
+                      ? true
+                      : !biometricAvailable
+                  }
+                />
+              }
+            />
+            <SettingsRow
+              icon="hash"
+              title={currentLanguage === "tr" ? "PIN Kilidi" : "PIN Lock"}
+              subtitle={
+                currentLanguage === "tr"
+                  ? "Web, masaüstü ve mobilde uygulamayı PIN ile koru"
+                  : "Protect the app with a PIN on web, desktop, and mobile"
+              }
+              rightElement={
+                <Switch
+                  value={privacySettings.appPinEnabled}
+                  onValueChange={handlePinToggle}
+                  trackColor={{
+                    false: Colors.dark.border,
+                    true: Colors.dark.primary,
+                  }}
+                  thumbColor={
+                    privacySettings.appPinEnabled
+                      ? Colors.dark.text
+                      : Colors.dark.textSecondary
                   }
                 />
               }
@@ -1242,6 +1285,76 @@ export default function SettingsScreen() {
                   {currentLanguage === "tr" ? "İptal" : "Cancel"}
                 </ThemedText>
               </Pressable>
+            </View>
+          </View>
+        </Modal>
+
+        <Modal visible={showPinModal} transparent animationType="fade">
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalContent}>
+              <ThemedText style={styles.modalTitle}>
+                {currentLanguage === "tr" ? "PIN Kilidi" : "PIN Lock"}
+              </ThemedText>
+              <ThemedText style={styles.modalDescription}>
+                {currentLanguage === "tr"
+                  ? "Uygulamayı açmak için 4-8 rakamlı bir PIN belirleyin."
+                  : "Set a 4-8 digit PIN to unlock the app."}
+              </ThemedText>
+              <TextInput
+                style={[styles.torModalInput, styles.pinModalInput]}
+                value={pinInput}
+                onChangeText={(value) => {
+                  setPinInput(value.replace(/\D/g, "").slice(0, 8));
+                  setPinError("");
+                }}
+                placeholder="PIN"
+                placeholderTextColor={Colors.dark.textDisabled}
+                keyboardType="number-pad"
+                secureTextEntry
+              />
+              <TextInput
+                style={[styles.torModalInput, styles.pinModalInput]}
+                value={pinConfirmInput}
+                onChangeText={(value) => {
+                  setPinConfirmInput(value.replace(/\D/g, "").slice(0, 8));
+                  setPinError("");
+                }}
+                placeholder={
+                  currentLanguage === "tr" ? "PIN tekrar" : "Confirm PIN"
+                }
+                placeholderTextColor={Colors.dark.textDisabled}
+                keyboardType="number-pad"
+                secureTextEntry
+              />
+              {pinError ? (
+                <ThemedText style={styles.pinModalError}>{pinError}</ThemedText>
+              ) : null}
+              <View style={styles.torModalButtons}>
+                <Pressable
+                  onPress={() => {
+                    setShowPinModal(false);
+                    setPinInput("");
+                    setPinConfirmInput("");
+                    setPinError("");
+                  }}
+                  style={[
+                    styles.torModalButton,
+                    styles.torModalButtonSecondary,
+                  ]}
+                >
+                  <ThemedText style={styles.torModalButtonText}>
+                    {currentLanguage === "tr" ? "İptal" : "Cancel"}
+                  </ThemedText>
+                </Pressable>
+                <Pressable
+                  onPress={handleSavePin}
+                  style={[styles.torModalButton, styles.torModalButtonPrimary]}
+                >
+                  <ThemedText style={styles.torModalButtonText}>
+                    {currentLanguage === "tr" ? "Kaydet" : "Save"}
+                  </ThemedText>
+                </Pressable>
+              </View>
             </View>
           </View>
         </Modal>
@@ -1777,6 +1890,12 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.lg,
     color: Colors.dark.text,
   },
+  modalDescription: {
+    fontSize: 14,
+    color: Colors.dark.textSecondary,
+    lineHeight: 20,
+    marginBottom: Spacing.md,
+  },
   languageOption: {
     paddingVertical: Spacing.md,
     paddingHorizontal: Spacing.lg,
@@ -1860,6 +1979,17 @@ const styles = StyleSheet.create({
     color: Colors.dark.text,
     marginBottom: Spacing.lg,
     fontFamily: Fonts?.mono,
+  },
+  pinModalInput: {
+    textAlign: "center",
+    letterSpacing: 6,
+    marginBottom: Spacing.md,
+  },
+  pinModalError: {
+    color: Colors.dark.error,
+    fontSize: 13,
+    marginBottom: Spacing.md,
+    textAlign: "center",
   },
   torModalButtons: {
     flexDirection: "row",

@@ -1,5 +1,105 @@
 # CipherNode
 
+Accountless self-hostable E2EE messenger with Go relay, Web, Mobile and Desktop clients.
+
+[![Docker](https://img.shields.io/badge/Docker-ready-2496ED?logo=docker&logoColor=white)](DOCKER.md)
+[![Go](https://img.shields.io/badge/Go-relay-00ADD8?logo=go&logoColor=white)](server/go)
+[![React Native](https://img.shields.io/badge/React%20Native-mobile-61DAFB?logo=react&logoColor=111)](client)
+[![License](https://img.shields.io/badge/License-GPLv3-blue)](LICENSE)
+[![Release](https://img.shields.io/github/v/release/boysplaydraw/ciphernode?label=Release)](https://github.com/boysplaydraw/ciphernode/releases/latest)
+
+CipherNode is a privacy-focused messenger for encrypted communication without accounts, phone numbers, or a hosted SaaS dependency. Clients generate local cryptographic identities, exchange encrypted messages through a small Go relay, and can optionally attempt direct WebRTC transport while keeping relay fallback available.
+
+## Features
+
+- Accountless local identity with no email or phone-number registration.
+- End-to-end encrypted direct and group messages.
+- Go WebSocket relay for delivery, presence, file notices, and WebRTC signaling.
+- Web, React Native mobile, and Tauri desktop targets.
+- Docker deployment for self-hosting behind Caddy or another reverse proxy.
+- Optional Tor/.onion deployment paths.
+- Optional WebRTC P2P transport with relay fallback.
+- File sharing with relay routing by default and P2P only after verified readiness.
+- Startup diagnostics, transport logs, health checks, and relay metrics.
+
+## Architecture
+
+```mermaid
+flowchart LR
+  A[Client: Web / Mobile / Desktop] -->|E2EE payloads over WSS| R[Go Relay]
+  B[Client: Web / Mobile / Desktop] -->|E2EE payloads over WSS| R
+  R -->|pending encrypted messages| S[(Memory or Redis)]
+  R -->|health, stats, files| H[HTTP API]
+  A -. WebRTC signaling .-> R
+  R -. WebRTC signaling .-> B
+  A -. verified DataChannel .-> B
+```
+
+Relay is the default transport. P2P is an opportunistic upgrade and is usable only when the PeerConnection is connected, the DataChannel is open, and a transport handshake has completed.
+
+## Screenshots
+
+Screenshots should live in `docs/screenshots/`. Recommended captures: onboarding, chat thread, group chat, network settings, and desktop window.
+
+## Docker Deployment
+
+```bash
+git clone https://github.com/boysplaydraw/ciphernode.git
+cd ciphernode
+docker compose up -d
+```
+
+For HTTPS behind Caddy:
+
+```bash
+EXPO_PUBLIC_SERVER_URL=https://relay.example.com docker compose -f infra/docker/docker-compose.yml --profile proxy up -d
+```
+
+## VPS Deployment
+
+1. Point DNS such as `relay.example.com` to the VPS.
+2. Install Docker and Docker Compose.
+3. Start the relay/web stack with `EXPO_PUBLIC_SERVER_URL=https://relay.example.com`.
+4. Put Caddy, nginx, or another proxy in front of port `5000`.
+5. Verify `https://relay.example.com/health` and `wss://relay.example.com/ws`.
+
+## Security Model
+
+- Private keys are generated and stored on the client.
+- The relay stores and forwards encrypted payloads; it is not trusted with plaintext.
+- The relay can observe delivery metadata: timing, IP address, online state, recipient IDs, and payload sizes.
+- Tor and self-hosting reduce network and infrastructure trust but do not remove endpoint risk.
+- WebRTC can expose network metadata; it is disabled while Tor mode is enabled.
+
+## Threat Model
+
+CipherNode protects message contents from the relay operator and passive network observers when HTTPS/WSS is used. It does not protect against compromised devices, malicious contacts, screenshots by recipients, traffic correlation by powerful adversaries, or a relay that withholds, delays, or deletes encrypted messages. See [THREAT_MODEL.md](THREAT_MODEL.md).
+
+## Transport Modes
+
+- `relay`: default path for messages, media notices, file metadata, and signaling.
+- `p2p_connecting`: WebRTC negotiation is in progress; UI remains on Relay/Offline.
+- `p2p_ready`: PeerConnection connected, DataChannel open, handshake complete.
+- `p2p_failed`: timeout, channel close, connection failure, or handshake mismatch; relay fallback remains active when available.
+
+## Troubleshooting
+
+- Android APK opens then closes: verify `EXPO_PUBLIC_SERVER_URL` is set for production builds and check diagnostics stored under `@ciphernode/startup_diagnostics`.
+- WebSocket fails: confirm `/health` works over HTTPS and `/ws` upgrades to WSS through the proxy.
+- P2P never becomes ready: keep relay mode active and check transport logs for state transitions.
+- Media fails in P2P mode: relay is the default route; P2P media is used only after transport readiness.
+
+## Roadmap
+
+- Native WebRTC dependency and EAS config for Android/iOS P2P.
+- Persistent encrypted storage backend for relay queues.
+- Prometheus metrics endpoint.
+- Automated crash report upload hook.
+- Reproducible desktop and mobile releases.
+- Hardened contact verification and safety-number UX.
+
+---
+
 **Uçtan uca şifreli, hesap gerektirmeyen, kendi relay sunucunuzla çalışabilen açık kaynak mesajlaşma uygulaması.**
 
 [![Release](https://img.shields.io/github/v/release/boysplaydraw/ciphernode?color=cyan&label=son%20sürüm)](https://github.com/boysplaydraw/ciphernode/releases/latest)

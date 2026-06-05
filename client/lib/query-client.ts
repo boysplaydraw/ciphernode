@@ -1,9 +1,11 @@
 import { QueryClient, QueryFunction } from "@tanstack/react-query";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { Platform } from "react-native";
 
 const SETTINGS_KEY = "@ciphernode/settings";
 
 let cachedCustomServerUrl: string | null = null;
+const NATIVE_DEFAULT_SERVER_URL = "https://relayworks.xyz";
 
 export async function loadCustomServerUrl(): Promise<void> {
   try {
@@ -48,6 +50,9 @@ export function getApiUrl(): string {
   // Resmi sunucu yapılandırılmamış — tarayıcıdan erişiliyorsa origin kullan (LAN erişimi için)
   if (typeof window !== "undefined" && window.location?.origin) {
     return window.location.origin + "/";
+  }
+  if (Platform.OS !== "web") {
+    return NATIVE_DEFAULT_SERVER_URL + "/";
   }
   return "http://localhost:5000/";
 }

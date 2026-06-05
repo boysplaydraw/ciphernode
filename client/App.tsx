@@ -58,6 +58,7 @@ import {
   isElectron,
 } from "@/lib/electron-bridge";
 import { hashPin, isValidPin } from "@/lib/app-lock";
+import { recordCrash, recordStartupDiagnostics } from "@/lib/diagnostics";
 
 export default function App() {
   const [isLoading, setIsLoading] = useState(true);
@@ -75,6 +76,15 @@ export default function App() {
   const biometricUnlockRef = useRef<(() => void) | null>(null);
 
   useEffect(() => {
+    recordStartupDiagnostics("app component mounted");
+    const errorUtils = (globalThis as any).ErrorUtils;
+    const previousHandler = errorUtils?.getGlobalHandler?.();
+    if (errorUtils?.setGlobalHandler) {
+      errorUtils.setGlobalHandler((error: unknown, isFatal?: boolean) => {
+        recordCrash(error, isFatal ? "fatal" : "global");
+        previousHandler?.(error, isFatal);
+      });
+    }
     initApp();
 
     // Bir kişi çevrimiçi olduğunda ve bizde public key yoksa güncelle
@@ -135,6 +145,9 @@ export default function App() {
       unsubUserOnline();
       unsubMessage();
       appStateSub.remove();
+      if (errorUtils?.setGlobalHandler && previousHandler) {
+        errorUtils.setGlobalHandler(previousHandler);
+      }
     };
   }, []);
 
@@ -168,6 +181,7 @@ export default function App() {
 
   const initApp = async () => {
     try {
+      recordStartupDiagnostics("initApp start");
       setIsLoading(true);
       setCriticalError(null);
 
@@ -179,6 +193,7 @@ export default function App() {
 
       const completed = await hasCompletedOnboarding();
       await loadCustomServerUrl();
+      recordStartupDiagnostics("settings loaded");
       setShowOnboarding(!completed);
 
       // Privacy mod başlangıç senkronizasyonu
@@ -209,11 +224,13 @@ export default function App() {
 
       // Onboarding tamamlandıysa hemen sunucuya bağlan
       if (completed) {
+        recordStartupDiagnostics("connecting relay");
         connectToServer(identity.id, identity.publicKey);
       }
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error);
       console.error("[App] Identity init failed:", msg);
+      recordCrash(error, "initApp");
       setCriticalError(msg);
     } finally {
       setIsLoading(false);
@@ -366,7 +383,7 @@ export default function App() {
   }
 
   return (
-    <ErrorBoundary>
+    <ErrorBoundary onError={(error, stack) => recordCrash(error, stack)}>
       <QueryClientProvider client={queryClient}>
         <SafeAreaProvider>
           <GestureHandlerRootView style={styles.root}>

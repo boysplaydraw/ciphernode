@@ -288,7 +288,7 @@ export default function SettingsScreen() {
             currentLanguage === "tr" ? "P2P Modu Aktif" : "P2P Mode Active",
             currentLanguage === "tr"
               ? "Relay sunucusu devre dışı. Tüm iletişim şimdi Nostr sinyalleme + WebRTC DataChannel üzerinden yapılıyor."
-              : "Relay server disabled. All communication now goes through Nostr signaling + WebRTC DataChannel.",
+              : "P2P connection is being prepared. Relay remains online for signaling and automatic fallback.",
             [{ text: "OK" }],
           );
         } else {
@@ -684,6 +684,54 @@ export default function SettingsScreen() {
     try {
       await Updates.reloadAsync();
     } catch {}
+  };
+
+  const handleCheckForUpdate = async () => {
+    if (Platform.OS === "web" && !isElectron()) return;
+    try {
+      if (!isElectron()) {
+        const update = await Updates.checkForUpdateAsync();
+        if (update.isAvailable) {
+          Alert.alert(
+            currentLanguage === "tr" ? "Gncelleme Bulundu" : "Update Available",
+            currentLanguage === "tr"
+              ? "Yeni bir srm mevcut. Simdi indirilip yklenecek."
+              : "A new version is available. It will be downloaded and installed now.",
+            [
+              {
+                text: currentLanguage === "tr" ? "Tamam" : "OK",
+                onPress: async () => {
+                  await Updates.fetchUpdateAsync();
+                  await Updates.reloadAsync();
+                },
+              },
+            ]
+          );
+        } else {
+          Alert.alert(
+            currentLanguage === "tr" ? "Gncel" : "Up to date",
+            currentLanguage === "tr"
+              ? "Uygulamaniz su anda en gncel srmde."
+              : "Your app is currently up to date."
+          );
+        }
+      } else {
+        // Desktop app handled separately via IPC or external link if needed
+        Alert.alert(
+          currentLanguage === "tr" ? "Gncelleme Kontrol" : "Update Check",
+          currentLanguage === "tr" 
+            ? "Masast uygulamasini sitemizden indirebilirsiniz." 
+            : "You can download desktop app updates from our website."
+        );
+      }
+    } catch (e) {
+      Alert.alert(
+        currentLanguage === "tr" ? "Hata" : "Error",
+        currentLanguage === "tr"
+          ? "Gncelleme kontrol edilirken bir hata olustu."
+          : "An error occurred while checking for updates."
+      );
+    }
   };
 
   const resetIdentityData = async () => {
@@ -1733,6 +1781,23 @@ export default function SettingsScreen() {
               }
               onPress={() => navigation.navigate("About")}
             />
+            {/* Guncelleme Kontrol (Sadece Mobil ve Desktop) */}
+            {(Platform.OS !== "web" || isElectron()) && (
+              <SettingsRow
+                icon="download-cloud"
+                title={
+                  currentLanguage === "tr"
+                    ? "Guncellemeleri Kontrol Et"
+                    : "Check for Updates"
+                }
+                subtitle={
+                  currentLanguage === "tr"
+                    ? "Yeni bir surum var mi kontrol et"
+                    : "Check if a new version is available"
+                }
+                onPress={handleCheckForUpdate}
+              />
+            )}
             {/* Web sitesi — sadece mobil/desktop'ta göster */}
             {Platform.OS !== "web" ? (
               <SettingsRow

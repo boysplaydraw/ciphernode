@@ -1,0 +1,24 @@
+repository:
+  name: ciphernode
+  description: "Accountless self-hostable E2EE messenger with Go relay, Web, Mobile and Desktop clients."
+  homepage: "https://relayworks.xyz"
+  private: false
+  has_issues: true
+  has_projects: true
+  has_wiki: false
+  topics:
+    - e2ee
+    - messenger
+    - privacy
+    - self-hosted
+    - docker
+    - golang
+    - websocket
+    - webrtc
+    - react-native
+    - tauri
+    - tor
+    - encryption
+    - secure-messaging
+    - peer-to-peer
+    - relay

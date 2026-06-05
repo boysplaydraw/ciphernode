@@ -1,7 +1,24 @@
 {
   "name": "ciphernode",
   "version": "1.0.0",
-  "description": "End-to-end encrypted, anonymous messaging with Tor support",
+  "description": "Accountless self-hostable E2EE messenger with Go relay, Web, Mobile and Desktop clients.",
+  "keywords": [
+    "e2ee",
+    "messenger",
+    "privacy",
+    "self-hosted",
+    "docker",
+    "golang",
+    "websocket",
+    "webrtc",
+    "react-native",
+    "tauri",
+    "tor",
+    "encryption",
+    "secure-messaging",
+    "peer-to-peer",
+    "relay"
+  ],
   "author": {
     "name": "CipherNode",
     "email": "support@cipher-node.site"

@@ -5,6 +5,7 @@ import (
 	"log"
 	"net/http"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -30,10 +31,20 @@ type Hub struct {
 	mu      sync.RWMutex
 	clients map[string]*Client
 	done    chan struct{}
+	metrics Metrics
 }
 
 func NewHub(store storage.Store, replay *security.ReplayProtector, limits *ratelimit.Limiter) *Hub {
 	return &Hub{store: store, replay: replay, limits: limits, clients: map[string]*Client{}, done: make(chan struct{})}
+}
+
+type Metrics struct {
+	ConnectionsTotal   uint64 `json:"connectionsTotal"`
+	DisconnectsTotal   uint64 `json:"disconnectsTotal"`
+	MessagesTotal      uint64 `json:"messagesTotal"`
+	GroupMessagesTotal uint64 `json:"groupMessagesTotal"`
+	SignalsTotal       uint64 `json:"signalsTotal"`
+	FilesTotal         uint64 `json:"filesTotal"`
 }
 
 func (h *Hub) Run() {
@@ -64,13 +75,26 @@ func (h *Hub) ConnectedCount() int {
 	return len(h.clients)
 }
 
+func (h *Hub) Metrics() Metrics {
+	return Metrics{
+		ConnectionsTotal:   atomic.LoadUint64(&h.metrics.ConnectionsTotal),
+		DisconnectsTotal:   atomic.LoadUint64(&h.metrics.DisconnectsTotal),
+		MessagesTotal:      atomic.LoadUint64(&h.metrics.MessagesTotal),
+		GroupMessagesTotal: atomic.LoadUint64(&h.metrics.GroupMessagesTotal),
+		SignalsTotal:       atomic.LoadUint64(&h.metrics.SignalsTotal),
+		FilesTotal:         atomic.LoadUint64(&h.metrics.FilesTotal),
+	}
+}
+
 func (h *Hub) ServeWS(w http.ResponseWriter, r *http.Request) {
 	upgrader := websocket.Upgrader{CheckOrigin: func(*http.Request) bool { return true }}
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
-		log.Printf("websocket upgrade failed: %v", err)
+		logJSON("websocket_upgrade_failed", map[string]any{"error": err.Error(), "remote": r.RemoteAddr})
 		return
 	}
+	atomic.AddUint64(&h.metrics.ConnectionsTotal, 1)
+	logJSON("websocket_connected", map[string]any{"remote": r.RemoteAddr})
 	client := &Client{hub: h, conn: conn, send: make(chan protocol.Outbound, 32), ip: r.RemoteAddr}
 	go client.writeLoop()
 	client.readLoop()
@@ -109,6 +133,8 @@ func (c *Client) writeLoop() {
 }
 
 func (c *Client) close() {
+	atomic.AddUint64(&c.hub.metrics.DisconnectsTotal, 1)
+	logJSON("websocket_disconnected", map[string]any{"userId": c.userID, "remote": c.ip})
 	c.hub.mu.Lock()
 	if c.userID != "" && c.hub.clients[c.userID] == c {
 		delete(c.hub.clients, c.userID)
@@ -130,6 +156,7 @@ func (c *Client) handle(env protocol.Envelope) {
 	case "register":
 		c.register(env)
 	case "message":
+		atomic.AddUint64(&c.hub.metrics.MessagesTotal, 1)
 		c.directMessage(env)
 	case "group:create":
 		var d struct {
@@ -148,6 +175,7 @@ func (c *Client) handle(env protocol.Envelope) {
 		_ = json.Unmarshal(env.Data, &d)
 		c.hub.store.RemoveGroupMember(d.GroupID, d.UserID)
 	case "group:message":
+		atomic.AddUint64(&c.hub.metrics.GroupMessagesTotal, 1)
 		c.groupMessage(env)
 	case "user:lookup":
 		var d struct {
@@ -157,15 +185,28 @@ func (c *Client) handle(env protocol.Envelope) {
 		key, _ := c.hub.store.GetPublicKey(d.UserID)
 		c.emit(protocol.Outbound{Event: "user:lookup:result", RequestID: env.RequestID, Data: map[string]any{"publicKey": nullString(key)}})
 	case "file:share":
+		atomic.AddUint64(&c.hub.metrics.FilesTotal, 1)
 		var d protocol.FileShare
 		if json.Unmarshal(env.Data, &d) == nil {
 			c.to(d.To, "file:incoming", map[string]any{"from": d.From, "fileId": d.FileID, "fileName": d.FileName, "fileSize": d.FileSize, "mimeType": d.MimeType, "encryptedKey": d.EncryptedKey, "timestamp": protocol.NowMillis()})
 		}
 	case "webrtc:offer", "webrtc:answer", "webrtc:ice", "p2p:file-offer":
+		atomic.AddUint64(&c.hub.metrics.SignalsTotal, 1)
 		c.relayByPeer(env)
 	default:
 		c.emit(protocol.Outbound{Event: "error", RequestID: env.RequestID, Error: "unsupported event"})
 	}
+}
+
+func logJSON(event string, fields map[string]any) {
+	fields["event"] = event
+	fields["timestamp"] = time.Now().UTC().Format(time.RFC3339)
+	data, err := json.Marshal(fields)
+	if err != nil {
+		log.Printf(`{"event":"log_marshal_failed","error":%q}`, err.Error())
+		return
+	}
+	log.Print(string(data))
 }
 
 func (c *Client) register(env protocol.Envelope) {

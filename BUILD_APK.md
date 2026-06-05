@@ -1,12 +1,13 @@
 # APK Oluşturma Rehberi
 
-## Web Crypto API Hatası Düzeltildi
+## Son Yapılan Kritik Düzeltmeler (P2P ve Android Crash)
 
-Aşağıdaki düzeltmeler yapıldı:
-- `react-native-quick-crypto` eklendi (native crypto desteği)
-- `expo-build-properties` eklendi (Android build optimizasyonu)
-- Metro config crypto polyfill için güncellendi
-- Client index.js crypto kurulumu eklendi
+Aşağıdaki stabilite ve transport düzeltmeleri yapıldı:
+- **Android/Hermes Crash Fix:** `globalThis.Buffer` ve `globalThis.process` polyfill'leri yalnızca web için değil, Native ortamlar (Android/iOS) için de aktif hale getirilerek başlangıç anındaki ani çökmeler önlendi (`client/index.js`).
+- **Erken Crash Loglama:** Uygulama başlamadan önce oluşabilecek hataları (özellikle crypto kaynaklı) yakalamak için `ErrorUtils` handler'ı en başa alındı.
+- **P2P Relay Fallback:** P2P bağlantısı başarısız olduğunda veya koptuğunda (`p2p_failed`) otomatik olarak Go relay'e geri dönme mekanizması eklendi (`client/lib/socket.ts`).
+- **P2P Medya İletimi:** Relay kapalıyken medyanın iletilebilmesi için `sendP2PFileOffer`'a `nostrPubkey` eklendi, böylece offline sinyalleşme güvenli hale getirildi.
+- `react-native-quick-crypto` ve `expo-build-properties` (Android build optimizasyonu) entegre edildi.
 
 ## APK Oluşturma Adımları
 

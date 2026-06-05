@@ -1,18 +1,17 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { View, StyleSheet } from "react-native";
 import { Feather } from "@expo/vector-icons";
 import { Colors, Spacing } from "@/constants/theme";
 import { ThemedText } from "./ThemedText";
 import { getTorSettings, type TorSettings } from "@/lib/storage";
 import {
-  onTorStatusChange,
-  onStatusChange,
+  getTransportState,
   isConnected,
-  isRelayConnected,
   onRelayStatusChange,
+  onStatusChange,
+  onTorStatusChange,
+  onTransportStateChange,
 } from "@/lib/socket";
-import { isNostrSignalActive } from "@/lib/nostr-signal";
-import { isWebRTCAvailable } from "@/lib/webrtc-p2p";
 
 type ConnectionState = "p2p" | "relay" | "offline" | "tor" | "tor_connecting";
 
@@ -21,13 +20,17 @@ interface ConnectionStatusProps {
   showLabel?: boolean;
 }
 
+function currentNetworkState(): ConnectionState {
+  if (getTransportState() === "p2p_ready") return "p2p";
+  return isConnected() ? "relay" : "offline";
+}
+
 export default function ConnectionStatus({
-  state = "relay",
+  state,
   showLabel = true,
 }: ConnectionStatusProps) {
-  // Başlangıç: socket bağlıysa relay, değilse offline
   const [displayState, setDisplayState] = useState<ConnectionState>(
-    isConnected() ? "relay" : "offline",
+    state ?? currentNetworkState(),
   );
 
   const updateDisplayState = useCallback((settings: TorSettings) => {
@@ -41,6 +44,11 @@ export default function ConnectionStatus({
   }, []);
 
   useEffect(() => {
+    if (state) {
+      setDisplayState(state);
+      return;
+    }
+
     getTorSettings().then(updateDisplayState);
 
     const unsubTor = onTorStatusChange(updateDisplayState);
@@ -50,32 +58,27 @@ export default function ConnectionStatus({
       } else if (status === "tor_connecting") {
         setDisplayState("tor_connecting");
       } else if (status === "registered") {
-        getTorSettings().then((s) => {
-          if (!s.enabled) setDisplayState("relay");
+        getTorSettings().then((settings) => {
+          if (!settings.enabled) setDisplayState(currentNetworkState());
         });
       } else if (status === "disconnected") {
-        // Relay düştü — Nostr/WebRTC aktifse "p2p" göster, yoksa "offline"
-        const inP2PMode = isNostrSignalActive() && isWebRTCAvailable();
-        setDisplayState(inP2PMode ? "p2p" : "offline");
+        setDisplayState(currentNetworkState());
       }
     });
-
-    // Relay durumu doğrudan izle
-    const unsubRelay = onRelayStatusChange((healthy) => {
-      if (!healthy) {
-        setTimeout(() => {
-          const inP2PMode = isNostrSignalActive() && isWebRTCAvailable();
-          setDisplayState(inP2PMode ? "p2p" : "offline");
-        }, 1500); // Nostr'un başlaması için kısa bekleme
-      }
+    const unsubRelay = onRelayStatusChange(() => {
+      setDisplayState(currentNetworkState());
+    });
+    const unsubTransport = onTransportStateChange(() => {
+      setDisplayState(currentNetworkState());
     });
 
     return () => {
       unsubTor();
       unsubStatus();
       unsubRelay();
+      unsubTransport();
     };
-  }, [updateDisplayState]);
+  }, [state, updateDisplayState]);
 
   const getColor = () => {
     switch (displayState) {
@@ -97,34 +100,35 @@ export default function ConnectionStatus({
       case "p2p":
         return "P2P";
       case "relay":
-        return "Bağlı";
+        return "Relay";
       case "tor":
         return "Tor";
       case "tor_connecting":
         return "Tor...";
       case "offline":
-        return "Bağlı Değil";
+        return "Offline";
     }
   };
 
   const isTor = displayState === "tor" || displayState === "tor_connecting";
+  const color = getColor();
 
   return (
     <View style={styles.container}>
       {isTor ? (
-        <View style={styles.torIndicator}>
-          <Feather name="shield" size={12} color={getColor()} />
+        <View style={styles.indicator}>
+          <Feather name="shield" size={12} color={color} />
           {showLabel ? (
-            <ThemedText style={[styles.label, { color: getColor() }]}>
+            <ThemedText style={[styles.label, { color }]}>
               {getLabel()}
             </ThemedText>
           ) : null}
         </View>
       ) : (
-        <View style={styles.dotContainer}>
-          <View style={[styles.dot, { backgroundColor: getColor() }]} />
+        <View style={styles.indicator}>
+          <View style={[styles.dot, { backgroundColor: color }]} />
           {showLabel ? (
-            <ThemedText style={[styles.label, { color: getColor() }]}>
+            <ThemedText style={[styles.label, { color }]}>
               {getLabel()}
             </ThemedText>
           ) : null}
@@ -139,7 +143,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.md,
     paddingVertical: Spacing.sm,
   },
-  dotContainer: {
+  indicator: {
     flexDirection: "row",
     alignItems: "center",
     gap: Spacing.xs,
@@ -148,11 +152,6 @@ const styles = StyleSheet.create({
     width: 8,
     height: 8,
     borderRadius: 4,
-  },
-  torIndicator: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: Spacing.xs,
   },
   label: {
     fontSize: 10,

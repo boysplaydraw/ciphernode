@@ -1,36 +1,67 @@
-# CipherNode Threat Model
+# Threat Model
+
+CipherNode is designed for accountless encrypted messaging with self-hostable infrastructure.
 
 ## Assets
 
-- Client private keys and local identity material
-- Message plaintext
-- Encrypted message payloads
-- Public keys
-- Relay metadata such as user IDs, timestamps, IPs, file sizes and group membership
+- Message plaintext.
+- Private identity keys.
+- Contact public keys and local address book.
+- File encryption keys and encrypted file payloads.
+- Delivery metadata such as sender, recipient, timing, online state, IP address, and payload size.
 
-## Trust Boundaries
+## Trusted Components
 
-- Clients are trusted with plaintext and private keys.
-- The relay is not trusted with plaintext.
-- Transport security depends on HTTPS/WSS or a trusted local/Tor route.
-- Desktop native commands are privileged compared with web UI code.
+- The local client device and app runtime.
+- The cryptographic libraries used by the client.
+- The user-controlled deployment environment when self-hosted.
 
-## Relay Responsibilities
+## Untrusted Components
 
-The Go backend is a relay/storage component. It may:
+- The relay operator for hosted deployments.
+- Network intermediaries.
+- WebRTC network paths and STUN infrastructure.
+- Other users and contacts.
 
-- Track connected users.
-- Store public keys.
-- Queue encrypted pending messages.
-- Store encrypted temporary file blobs and file metadata.
-- Enforce TTL cleanup, rate limits and replay checks.
+## Protections
 
-It must not decrypt E2EE message or file content.
+- Message contents are encrypted client-side before relay transport.
+- The relay handles encrypted payloads and public routing metadata only.
+- HTTPS/WSS protects transport against passive network observers.
+- Replay protection and rate limits reduce relay abuse.
+- P2P is an optional upgrade and does not disable relay fallback until it is verified ready.
 
-## Known Metadata Risks
+## Non-Goals
 
-The relay can observe connection timing, sender/recipient identifiers, group membership, file size, MIME type, message frequency and IP-derived network metadata unless hidden by Tor or another network layer.
+- Protecting plaintext on a compromised or unlocked device.
+- Preventing recipients from copying, exporting, or screenshotting messages.
+- Hiding all metadata from the relay.
+- Preventing traffic-correlation attacks by a powerful network adversary.
+- Guaranteeing delivery when every relay and direct path is unavailable.
 
-## Abuse Protection
+## Transport Assumptions
 
-Current Go migration includes rate limiting, nonce/timestamp replay checks and TTL cleanup. This is not a complete abuse-prevention system and has not been externally audited.
+Relay mode is the default. P2P mode is usable only after:
+
+- PeerConnection state is `connected`.
+- DataChannel state is `open`.
+- CipherNode transport handshake has completed.
+
+Fallback to relay is required on:
+
+- DataChannel close or error.
+- PeerConnection `failed`, `disconnected`, or `closed`.
+- Connection timeout.
+- Handshake peer mismatch.
+
+## WebRTC and Tor
+
+WebRTC can expose IP metadata through ICE/STUN. CipherNode treats WebRTC as unavailable while Tor mode is enabled. Users who need stronger network anonymity should use relay over Tor/.onion instead of P2P.
+
+## Remaining Risks
+
+- Relay metadata visibility.
+- Client-side storage extraction on compromised devices.
+- Malicious contacts sending malformed encrypted payloads or files.
+- Supply-chain risk in npm, Expo, Go, and desktop packaging dependencies.
+- Native mobile WebRTC remains disabled until the dependency and permissions are explicitly added and tested.

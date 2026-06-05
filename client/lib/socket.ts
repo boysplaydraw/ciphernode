@@ -148,15 +148,82 @@ let relayHealthy: boolean = false; // Relay sunucusu sağlıklı mı?
 
 type RelayStatusCallback = (healthy: boolean) => void;
 const relayStatusListeners: RelayStatusCallback[] = [];
+export type TransportState =
+  | "relay"
+  | "p2p_connecting"
+  | "p2p_ready"
+  | "p2p_failed";
+type TransportStatusCallback = (state: TransportState, reason?: string) => void;
+const transportStatusListeners: TransportStatusCallback[] = [];
+let transportState: TransportState = "relay";
 let unsubscribeNostrP2PFileOffer: (() => void) | null = null;
+
+function transportLog(event: string, details: Record<string, unknown> = {}): void {
+  console.info(
+    "[Transport]",
+    JSON.stringify({
+      event,
+      state: transportState,
+      relayHealthy,
+      p2pOnlyEnabled,
+      timestamp: new Date().toISOString(),
+      ...details,
+    }),
+  );
+}
+
+export function reportTransportState(
+  nextState: TransportState,
+  reason?: string,
+): void {
+  if (transportState === nextState) return;
+  const previous = transportState;
+  transportState = nextState;
+  transportLog("state_change", { previous, next: nextState, reason });
+  transportStatusListeners.forEach((cb) => cb(nextState, reason));
+
+  if (nextState === "p2p_ready") {
+    if (socket?.connected) {
+      transportLog("disconnecting_relay", { reason: "p2p_ready" });
+      socket.disconnect();
+    }
+  } else if ((previous === "p2p_ready" || previous === "p2p_connecting") && nextState === "p2p_failed") {
+    if (!socket?.connected && currentUserId && currentPublicKey) {
+      transportLog("reconnecting_relay", { reason: "fallback" });
+      initSocket(currentUserId, currentPublicKey).catch(console.error);
+    }
+  }
+}
+
+export function getTransportState(): TransportState {
+  return transportState;
+}
+
+export function isP2PReady(): boolean {
+  return transportState === "p2p_ready";
+}
+
+export function onTransportStateChange(
+  callback: TransportStatusCallback,
+): () => void {
+  transportStatusListeners.push(callback);
+  return () => {
+    const idx = transportStatusListeners.indexOf(callback);
+    if (idx > -1) transportStatusListeners.splice(idx, 1);
+  };
+}
 
 /** Relay bağlantı durumunu bildir */
 function setRelayHealth(healthy: boolean): void {
   if (relayHealthy === healthy) return;
   relayHealthy = healthy;
+  transportLog("relay_health", { healthy });
   relayStatusListeners.forEach((cb) => cb(healthy));
 
   if (!healthy) {
+    if (transportState !== "p2p_ready") {
+      reportTransportState("p2p_failed", "relay disconnected before p2p ready");
+    }
     // Relay düştü → Nostr sinyallemesini başlat (kimlik varsa)
     import("./crypto").then(({ getIdentity }) =>
       getIdentity().then((identity) => {
@@ -169,6 +236,9 @@ function setRelayHealth(healthy: boolean): void {
       }),
     );
   } else {
+    if (transportState === "p2p_failed") {
+      reportTransportState("relay", "relay reconnected");
+    }
     // Relay bağlandı → Nostr'u kapat (opsiyonel, arka planda açık kalabilir)
     import("./nostr-signal").then(({ disconnectNostrSignal }) => {
       disconnectNostrSignal();
@@ -201,6 +271,7 @@ export function setStegMode(enabled: boolean): void {
 /** P2P Only modunu aç/kapat */
 export function setP2POnlyMode(enabled: boolean): void {
   p2pOnlyEnabled = enabled;
+  transportLog("p2p_only_toggle", { enabled });
 }
 
 /**
@@ -210,10 +281,7 @@ export function setP2POnlyMode(enabled: boolean): void {
  */
 export async function activateP2PMode(): Promise<void> {
   // Relay bağlantısını kes
-  if (socket?.connected) {
-    socket.disconnect();
-  }
-  setRelayHealth(false);
+  reportTransportState("p2p_connecting", "p2p mode requested");
   // Nostr'u başlat (setRelayHealth(false) zaten tetikler ama kimlik lazım)
   const { getIdentity } = await import("./crypto");
   const identity = await getIdentity();
@@ -228,6 +296,8 @@ export async function activateP2PMode(): Promise<void> {
  * P2P modundan çık, relay'e yeniden bağlan.
  */
 export async function deactivateP2PMode(): Promise<void> {
+  p2pOnlyEnabled = false;
+  reportTransportState("relay", "p2p mode disabled");
   if (currentUserId && currentPublicKey) {
     await initSocket(currentUserId, currentPublicKey);
   }
@@ -399,6 +469,9 @@ export async function initSocket(
       connectTimeoutId = null;
     }
     setRelayHealth(true);
+    if (transportState !== "p2p_ready" && transportState !== "p2p_connecting") {
+      reportTransportState("relay", "relay connected");
+    }
     const userGroupsList = await getActiveGroups();
     const groupIds = userGroupsList.map((g) => g.id);
     socket?.emit("register", {
@@ -567,7 +640,13 @@ export function sendMessage(to: string, encrypted: string, id: string): void {
       from: currentUserId,
       encrypted: payload,
       id,
-      p2pOnly: p2pOnlyEnabled || undefined,
+      p2pOnly: p2pOnlyEnabled && isP2PReady() ? true : undefined,
+    });
+  } else {
+    transportLog("send_message_skipped", {
+      to,
+      reason: "relay unavailable",
+      p2pReady: isP2PReady(),
     });
   }
 }
@@ -661,6 +740,10 @@ export function isConnected(): boolean {
 /** Relay sunucusu sağlıklı ve bağlı mı? */
 export function isRelayConnected(): boolean {
   return relayHealthy;
+}
+
+export function getCurrentUserId(): string | null {
+  return currentUserId;
 }
 
 /** Relay bağlantı durumu değiştiğinde bildirim al */

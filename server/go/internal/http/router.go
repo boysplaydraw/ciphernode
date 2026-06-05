@@ -19,13 +19,13 @@ import (
 func NewRouter(cfg config.Config, store storage.Store, fileSvc *files.Service, hub *ws.Hub) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/health", func(w http.ResponseWriter, _ *http.Request) {
-		writeJSON(w, http.StatusOK, map[string]any{"status": "ok", "timestamp": time.Now().UnixMilli()})
+		writeJSON(w, http.StatusOK, map[string]any{"status": "ok", "timestamp": time.Now().UnixMilli(), "connections": hub.ConnectedCount(), "metrics": hub.Metrics()})
 	})
 	mux.HandleFunc("/api/health", func(w http.ResponseWriter, _ *http.Request) {
-		writeJSON(w, http.StatusOK, map[string]any{"status": "ok", "timestamp": time.Now().UnixMilli()})
+		writeJSON(w, http.StatusOK, map[string]any{"status": "ok", "timestamp": time.Now().UnixMilli(), "connections": hub.ConnectedCount(), "metrics": hub.Metrics()})
 	})
 	mux.HandleFunc("/api/stats", func(w http.ResponseWriter, _ *http.Request) {
-		writeJSON(w, http.StatusOK, store.Stats(hub.ConnectedCount()))
+		writeJSON(w, http.StatusOK, map[string]any{"storage": store.Stats(hub.ConnectedCount()), "connections": hub.ConnectedCount(), "metrics": hub.Metrics()})
 	})
 	mux.HandleFunc("/api/users/", func(w http.ResponseWriter, r *http.Request) {
 		userID := strings.TrimSuffix(strings.TrimPrefix(r.URL.Path, "/api/users/"), "/publickey")

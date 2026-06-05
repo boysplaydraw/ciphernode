@@ -15,7 +15,7 @@
  */
 
 import { Platform } from "react-native";
-import { isTorEnabled } from "./socket";
+import { isP2PReady, isTorEnabled } from "./socket";
 
 // ── Platform-aware RTCPeerConnection ──────────────────────────────────
 let RTCPeerConnectionImpl: typeof RTCPeerConnection;
@@ -27,16 +27,9 @@ if (Platform.OS === "web") {
   RTCSessionDescriptionImpl = globalThis.RTCSessionDescription;
   RTCIceCandidateImpl = globalThis.RTCIceCandidate;
 } else {
-  try {
-    const webrtc = require("react-native-webrtc");
-    RTCPeerConnectionImpl = webrtc.RTCPeerConnection;
-    RTCSessionDescriptionImpl = webrtc.RTCSessionDescription;
-    RTCIceCandidateImpl = webrtc.RTCIceCandidate;
-  } catch {
-    RTCPeerConnectionImpl = null as any;
-    RTCSessionDescriptionImpl = null as any;
-    RTCIceCandidateImpl = null as any;
-  }
+  RTCPeerConnectionImpl = null as any;
+  RTCSessionDescriptionImpl = null as any;
+  RTCIceCandidateImpl = null as any;
 }
 
 export function isWebRTCAvailable(): boolean {
@@ -73,7 +66,9 @@ export function getTransferMethod(
     return "too-large";
   }
   if (fileSize <= RELAY_FILE_LIMIT) return "relay";
-  if (fileSize <= P2P_FILE_LIMIT && isWebRTCAvailable()) return "p2p";
+  if (fileSize <= P2P_FILE_LIMIT && isWebRTCAvailable() && isP2PReady()) {
+    return "p2p";
+  }
   return "too-large";
 }
 

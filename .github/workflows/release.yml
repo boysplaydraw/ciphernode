@@ -17,7 +17,6 @@ permissions:
 
 env:
   NODE_VERSION: 20
-  GO_VERSION: '1.24'
   RELEASE_VERSION: ${{ github.ref_type == 'tag' && github.ref_name || inputs.version }}
 
 jobs:
@@ -63,7 +62,7 @@ jobs:
 
       - uses: actions/setup-go@v5
         with:
-          go-version: ${{ env.GO_VERSION }}
+          go-version-file: server/go/go.mod
 
       - name: Build Go backend (Windows x64)
         run: go build -trimpath -ldflags="-s -w" -o src-tauri/binaries/ciphernode-backend-x86_64-pc-windows-msvc.exe ./server/go/cmd/ciphernode-server
@@ -110,7 +109,7 @@ jobs:
 
       - uses: actions/setup-go@v5
         with:
-          go-version: ${{ env.GO_VERSION }}
+          go-version-file: server/go/go.mod
 
       - name: Build Go backend (Linux x64)
         run: CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o src-tauri/binaries/ciphernode-backend-x86_64-unknown-linux-gnu ./server/go/cmd/ciphernode-server
@@ -159,7 +158,7 @@ jobs:
 
       - uses: actions/setup-go@v5
         with:
-          go-version: ${{ env.GO_VERSION }}
+          go-version-file: server/go/go.mod
 
       - name: Build Go backend (macOS Universal)
         run: |

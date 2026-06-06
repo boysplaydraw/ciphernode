@@ -1,13 +1,20 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as SecureStore from "expo-secure-store";
+import * as Crypto from "expo-crypto";
 import { Platform } from "react-native";
 import * as openpgp from "openpgp";
+import { Buffer } from "buffer";
 import {
   generateSecretKey,
   getPublicKey as nostrGetPublicKey,
 } from "nostr-tools";
 
 const IDENTITY_STORAGE_KEY = "@ciphernode/identity";
+const IDENTITY_BACKUP_SALT_BYTES = 16;
+const IDENTITY_BACKUP_IV_BYTES = 12;
+const IDENTITY_BACKUP_TAG_BYTES = 16;
+const IDENTITY_BACKUP_KEY_BYTES = 32;
+const IDENTITY_BACKUP_PBKDF2_ITERATIONS = 210_000;
 
 export interface UserIdentity {
   id: string;
@@ -326,6 +333,222 @@ export async function verifySignature(
 
 export async function exportPublicKey(identity: UserIdentity): Promise<string> {
   return identity.publicKey;
+}
+
+async function getSubtleCrypto(): Promise<SubtleCrypto | null> {
+  return globalThis.crypto?.subtle ?? null;
+}
+
+function bytesToBase64(bytes: Uint8Array): string {
+  return Buffer.from(bytes).toString("base64");
+}
+
+function base64ToBytes(base64: string): Uint8Array {
+  return new Uint8Array(Buffer.from(base64, "base64"));
+}
+
+function concatBytes(...chunks: Uint8Array[]): Uint8Array {
+  const totalLength = chunks.reduce((sum, chunk) => sum + chunk.length, 0);
+  const result = new Uint8Array(totalLength);
+  let offset = 0;
+  for (const chunk of chunks) {
+    result.set(chunk, offset);
+    offset += chunk.length;
+  }
+  return result;
+}
+
+function bytesToArrayBuffer(bytes: Uint8Array): ArrayBuffer {
+  return bytes.buffer.slice(
+    bytes.byteOffset,
+    bytes.byteOffset + bytes.byteLength,
+  ) as ArrayBuffer;
+}
+
+async function encryptWithQuickCrypto(
+  plaintext: string,
+  password: string,
+  salt: Uint8Array,
+  iv: Uint8Array,
+): Promise<Uint8Array> {
+  const quickCrypto = await import("react-native-quick-crypto");
+  const key = quickCrypto.default.pbkdf2Sync(
+    password,
+    quickCrypto.Buffer.from(salt),
+    IDENTITY_BACKUP_PBKDF2_ITERATIONS,
+    IDENTITY_BACKUP_KEY_BYTES,
+    "sha256",
+  );
+  const cipher = quickCrypto.default.createCipheriv(
+    "aes-256-gcm",
+    key,
+    quickCrypto.Buffer.from(iv),
+  );
+  const ciphertext = quickCrypto.Buffer.concat([
+    cipher.update(plaintext, "utf8"),
+    cipher.final(),
+  ]);
+  const tag = cipher.getAuthTag();
+  return new Uint8Array(quickCrypto.Buffer.concat([ciphertext, tag]));
+}
+
+async function decryptWithQuickCrypto(
+  ciphertextWithTag: Uint8Array,
+  password: string,
+  salt: Uint8Array,
+  iv: Uint8Array,
+): Promise<string> {
+  if (ciphertextWithTag.length <= IDENTITY_BACKUP_TAG_BYTES) {
+    throw new Error("Invalid encrypted identity backup");
+  }
+
+  const quickCrypto = await import("react-native-quick-crypto");
+  const key = quickCrypto.default.pbkdf2Sync(
+    password,
+    quickCrypto.Buffer.from(salt),
+    IDENTITY_BACKUP_PBKDF2_ITERATIONS,
+    IDENTITY_BACKUP_KEY_BYTES,
+    "sha256",
+  );
+  const tag = quickCrypto.Buffer.from(
+    ciphertextWithTag.slice(-IDENTITY_BACKUP_TAG_BYTES),
+  );
+  const ciphertext = quickCrypto.Buffer.from(
+    ciphertextWithTag.slice(0, -IDENTITY_BACKUP_TAG_BYTES),
+  );
+  const decipher = quickCrypto.default.createDecipheriv(
+    "aes-256-gcm",
+    key,
+    quickCrypto.Buffer.from(iv),
+  );
+  decipher.setAuthTag(tag);
+  return quickCrypto.Buffer.concat([
+    decipher.update(ciphertext),
+    decipher.final(),
+  ]).toString("utf8");
+}
+
+export async function exportIdentityEncrypted(
+  identity: UserIdentity,
+  password: string,
+): Promise<string> {
+  if (!password) {
+    throw new Error("Password is required");
+  }
+
+  const salt = await Crypto.getRandomBytesAsync(IDENTITY_BACKUP_SALT_BYTES);
+  const iv = await Crypto.getRandomBytesAsync(IDENTITY_BACKUP_IV_BYTES);
+  const plaintext = JSON.stringify(identity);
+  const subtle = await getSubtleCrypto();
+
+  let ciphertextWithTag: Uint8Array;
+  if (subtle) {
+    const passwordKey = await subtle.importKey(
+      "raw",
+      new TextEncoder().encode(password),
+      "PBKDF2",
+      false,
+      ["deriveKey"],
+    );
+    const key = await subtle.deriveKey(
+      {
+        name: "PBKDF2",
+        salt: bytesToArrayBuffer(salt),
+        iterations: IDENTITY_BACKUP_PBKDF2_ITERATIONS,
+        hash: "SHA-256",
+      },
+      passwordKey,
+      { name: "AES-GCM", length: 256 },
+      false,
+      ["encrypt"],
+    );
+    const encrypted = await subtle.encrypt(
+      { name: "AES-GCM", iv: bytesToArrayBuffer(iv) },
+      key,
+      new TextEncoder().encode(plaintext),
+    );
+    ciphertextWithTag = new Uint8Array(encrypted);
+  } else {
+    ciphertextWithTag = await encryptWithQuickCrypto(
+      plaintext,
+      password,
+      salt,
+      iv,
+    );
+  }
+
+  return bytesToBase64(concatBytes(salt, iv, ciphertextWithTag));
+}
+
+export async function importIdentityEncrypted(
+  encryptedData: string,
+  password: string,
+): Promise<UserIdentity> {
+  if (!password) {
+    throw new Error("Password is required");
+  }
+
+  const data = base64ToBytes(encryptedData);
+  const minLength =
+    IDENTITY_BACKUP_SALT_BYTES +
+    IDENTITY_BACKUP_IV_BYTES +
+    IDENTITY_BACKUP_TAG_BYTES +
+    1;
+  if (data.length < minLength) {
+    throw new Error("Invalid encrypted identity backup");
+  }
+
+  const salt = data.slice(0, IDENTITY_BACKUP_SALT_BYTES);
+  const iv = data.slice(
+    IDENTITY_BACKUP_SALT_BYTES,
+    IDENTITY_BACKUP_SALT_BYTES + IDENTITY_BACKUP_IV_BYTES,
+  );
+  const ciphertextWithTag = data.slice(
+    IDENTITY_BACKUP_SALT_BYTES + IDENTITY_BACKUP_IV_BYTES,
+  );
+  const subtle = await getSubtleCrypto();
+
+  let decryptedJson: string;
+  if (subtle) {
+    const passwordKey = await subtle.importKey(
+      "raw",
+      new TextEncoder().encode(password),
+      "PBKDF2",
+      false,
+      ["deriveKey"],
+    );
+    const key = await subtle.deriveKey(
+      {
+        name: "PBKDF2",
+        salt: bytesToArrayBuffer(salt),
+        iterations: IDENTITY_BACKUP_PBKDF2_ITERATIONS,
+        hash: "SHA-256",
+      },
+      passwordKey,
+      { name: "AES-GCM", length: 256 },
+      false,
+      ["decrypt"],
+    );
+    const decrypted = await subtle.decrypt(
+      { name: "AES-GCM", iv: bytesToArrayBuffer(iv) },
+      key,
+      bytesToArrayBuffer(ciphertextWithTag),
+    );
+    decryptedJson = new TextDecoder().decode(decrypted);
+  } else {
+    decryptedJson = await decryptWithQuickCrypto(
+      ciphertextWithTag,
+      password,
+      salt,
+      iv,
+    );
+  }
+
+  const parsed: UserIdentity = JSON.parse(decryptedJson);
+  if (!parsed.id || !parsed.publicKey || !parsed.privateKey) {
+    throw new Error("Invalid identity backup");
+  }
+  return parsed;
 }
 
 /**

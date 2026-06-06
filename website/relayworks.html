@@ -1,0 +1,274 @@
+<!doctype html>
+<html lang="tr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>RelayWorks — Kendi CipherNode Relay Sunucunu Çalıştır</title>
+    <meta name="description" content="RelayWorks ile kendi özel E2EE mesajlaşma relay sunucunu barındır. Hesap yok, kayıt yok, tam kontrol." />
+    <style>
+      *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+      :root {
+        --bg: #0a0a0a;
+        --surface: #111;
+        --border: #222;
+        --text: #e8e8e8;
+        --muted: #888;
+        --accent: #3b82f6;
+        --accent-hover: #2563eb;
+        --radius: 12px;
+      }
+      body { background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; line-height: 1.6; }
+      a { color: var(--accent); text-decoration: none; }
+      a:hover { text-decoration: underline; }
+
+      /* NAV */
+      nav { display: flex; align-items: center; justify-content: space-between; padding: 20px 40px; border-bottom: 1px solid var(--border); }
+      .logo { font-size: 20px; font-weight: 700; color: var(--text); letter-spacing: -0.5px; }
+      .logo span { color: var(--accent); }
+      .nav-cta { background: var(--accent); color: #fff; padding: 8px 20px; border-radius: 8px; font-size: 14px; font-weight: 600; }
+      .nav-cta:hover { background: var(--accent-hover); text-decoration: none; }
+
+      /* HERO */
+      .hero { text-align: center; padding: 100px 20px 80px; max-width: 720px; margin: 0 auto; }
+      .hero-badge { display: inline-flex; align-items: center; gap: 6px; background: rgba(59,130,246,.15); color: var(--accent); border: 1px solid rgba(59,130,246,.3); border-radius: 999px; padding: 4px 14px; font-size: 13px; font-weight: 500; margin-bottom: 24px; }
+      h1 { font-size: clamp(32px, 6vw, 56px); font-weight: 800; line-height: 1.1; letter-spacing: -1.5px; margin-bottom: 20px; }
+      h1 span { color: var(--accent); }
+      .hero-sub { font-size: 18px; color: var(--muted); max-width: 480px; margin: 0 auto 36px; }
+      .hero-actions { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+      .btn-primary { background: var(--accent); color: #fff; padding: 14px 28px; border-radius: 10px; font-size: 15px; font-weight: 600; border: none; cursor: pointer; transition: background .15s; }
+      .btn-primary:hover { background: var(--accent-hover); }
+      .btn-secondary { background: transparent; color: var(--text); padding: 14px 28px; border-radius: 10px; font-size: 15px; font-weight: 600; border: 1px solid var(--border); cursor: pointer; transition: border-color .15s; }
+      .btn-secondary:hover { border-color: #444; }
+
+      /* FEATURES */
+      .features { padding: 80px 20px; max-width: 1000px; margin: 0 auto; }
+      .section-title { text-align: center; font-size: 30px; font-weight: 700; margin-bottom: 48px; letter-spacing: -0.5px; }
+      .feature-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 20px; }
+      .feature-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 28px; }
+      .feature-icon { font-size: 28px; margin-bottom: 14px; }
+      .feature-card h3 { font-size: 17px; font-weight: 600; margin-bottom: 8px; }
+      .feature-card p { color: var(--muted); font-size: 14px; line-height: 1.6; }
+
+      /* PRICING */
+      .pricing { padding: 80px 20px; max-width: 840px; margin: 0 auto; }
+      .pricing-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+      @media (max-width: 600px) { .pricing-grid { grid-template-columns: 1fr; } }
+      .plan { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 32px; position: relative; }
+      .plan.popular { border-color: var(--accent); }
+      .popular-badge { position: absolute; top: -12px; left: 50%; transform: translateX(-50%); background: var(--accent); color: #fff; font-size: 12px; font-weight: 600; padding: 3px 14px; border-radius: 999px; white-space: nowrap; }
+      .plan-name { font-size: 15px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 12px; }
+      .plan-price { font-size: 42px; font-weight: 800; letter-spacing: -1px; margin-bottom: 4px; }
+      .plan-price span { font-size: 18px; font-weight: 500; color: var(--muted); }
+      .plan-desc { color: var(--muted); font-size: 14px; margin-bottom: 24px; }
+      .plan-features { list-style: none; margin-bottom: 28px; }
+      .plan-features li { padding: 6px 0; font-size: 14px; display: flex; align-items: center; gap: 10px; }
+      .plan-features li::before { content: "✓"; color: var(--accent); font-weight: 700; flex-shrink: 0; }
+      .btn-plan { width: 100%; padding: 13px; border-radius: 9px; font-size: 15px; font-weight: 600; cursor: pointer; transition: all .15s; border: none; }
+      .btn-plan-primary { background: var(--accent); color: #fff; }
+      .btn-plan-primary:hover { background: var(--accent-hover); }
+      .btn-plan-secondary { background: transparent; color: var(--text); border: 1px solid var(--border); }
+      .btn-plan-secondary:hover { border-color: #555; }
+
+      /* FOOTER */
+      footer { border-top: 1px solid var(--border); padding: 32px 40px; display: flex; align-items: center; justify-content: space-between; flex-wrap: gap; gap: 12px; color: var(--muted); font-size: 13px; }
+      footer a { color: var(--muted); }
+      footer a:hover { color: var(--text); text-decoration: none; }
+
+      /* MODAL */
+      .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.7); backdrop-filter: blur(4px); z-index: 100; align-items: center; justify-content: center; }
+      .modal-overlay.open { display: flex; }
+      .modal { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 36px; width: 100%; max-width: 420px; margin: 20px; }
+      .modal h2 { font-size: 22px; font-weight: 700; margin-bottom: 6px; }
+      .modal p { color: var(--muted); font-size: 14px; margin-bottom: 24px; }
+      .modal label { display: block; font-size: 13px; font-weight: 500; color: var(--muted); margin-bottom: 6px; }
+      .modal input { width: 100%; padding: 12px 14px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); color: var(--text); font-size: 15px; outline: none; margin-bottom: 20px; }
+      .modal input:focus { border-color: var(--accent); }
+      .modal-plan-display { background: rgba(59,130,246,.1); border: 1px solid rgba(59,130,246,.25); border-radius: 8px; padding: 10px 14px; font-size: 14px; font-weight: 500; margin-bottom: 20px; color: var(--accent); }
+      .modal-actions { display: flex; gap: 10px; }
+      .modal-cancel { flex: 1; padding: 12px; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer; background: transparent; color: var(--muted); border: 1px solid var(--border); }
+      .modal-submit { flex: 2; padding: 12px; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer; background: var(--accent); color: #fff; border: none; }
+      .modal-submit:hover { background: var(--accent-hover); }
+      .modal-submit:disabled { opacity: .6; cursor: not-allowed; }
+      .modal-error { color: #f87171; font-size: 13px; margin-top: -12px; margin-bottom: 14px; display: none; }
+    </style>
+  </head>
+  <body>
+    <nav>
+      <div class="logo">Relay<span>Works</span></div>
+      <a href="#pricing" class="nav-cta">Başla</a>
+    </nav>
+
+    <section class="hero">
+      <div class="hero-badge">
+        🔒 E2EE — Uçtan Uca Şifreli
+      </div>
+      <h1>Kendi <span>Özel Relay</span> Sunucunu Çalıştır</h1>
+      <p class="hero-sub">Hesap yok. Kayıt yok. Sadece güvenli, self-hosted E2EE mesajlaşma — senin kontrolünde.</p>
+      <div class="hero-actions">
+        <button class="btn-primary" onclick="document.getElementById('pricing').scrollIntoView({behavior:'smooth'})">Planları Görüntüle</button>
+        <a href="https://github.com/boysplaydraw/ciphernode" target="_blank" rel="noopener noreferrer"><button class="btn-secondary">GitHub</button></a>
+      </div>
+    </section>
+
+    <section class="features">
+      <h2 class="section-title">Neden RelayWorks?</h2>
+      <div class="feature-grid">
+        <div class="feature-card">
+          <div class="feature-icon">🔐</div>
+          <h3>Tam E2EE Şifreleme</h3>
+          <p>RSA-4096 + AES-256-GCM. Sunucu hiçbir zaman mesaj içeriğini görmez. Şifreleme tamamen client tarafında yapılır.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">🖥️</div>
+          <h3>Self-Hosted Özgürlük</h3>
+          <p>Relay sunucunu kendi VPS'inde veya Docker ile çalıştır. Verilerinin tam kontrolü sende.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">⚡</div>
+          <h3>Go ile Yazılmış</h3>
+          <p>Yüksek performanslı Go backend. Düşük kaynak tüketimi, yüksek eşzamanlı bağlantı kapasitesi.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">🌐</div>
+          <h3>Web + Mobil + Masaüstü</h3>
+          <p>Tek relay, tüm platformlar: iOS, Android, Web, Windows, macOS ve Linux. Aynı şifreli iletişim.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">🧅</div>
+          <h3>Tor Desteği</h3>
+          <p>Opsiyonel Tor hidden service entegrasyonu. Kullanıcı IP'sini gizle, ekstra anonimlik sağla.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">📦</div>
+          <h3>Tek Komutla Kur</h3>
+          <p>Docker Compose ile dakikalar içinde kurulum. <code>docker compose up</code> — hepsi bu kadar.</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="pricing" id="pricing">
+      <h2 class="section-title">Fiyatlar</h2>
+      <div class="pricing-grid">
+        <div class="plan">
+          <div class="plan-name">Personal</div>
+          <div class="plan-price">5€<span>/ay</span></div>
+          <div class="plan-desc">Bireysel kullanım için ideal</div>
+          <ul class="plan-features">
+            <li>1 adet relay sunucu kurulumu</li>
+            <li>10 eşzamanlı kullanıcı</li>
+            <li>Kurulum rehberi + doküman</li>
+            <li>E-posta desteği</li>
+            <li>Docker imajı dahil</li>
+          </ul>
+          <button class="btn-plan btn-plan-secondary" onclick="openModal('Personal', '5€/ay')">Başla</button>
+        </div>
+        <div class="plan popular">
+          <div class="popular-badge">En Popüler</div>
+          <div class="plan-name">Team</div>
+          <div class="plan-price">20€<span>/ay</span></div>
+          <div class="plan-desc">Ekipler ve kurumlar için</div>
+          <ul class="plan-features">
+            <li>Sınırsız relay kurulumu</li>
+            <li>Sınırsız kullanıcı</li>
+            <li>Öncelikli destek</li>
+            <li>Özel domain yapılandırması</li>
+            <li>CasaOS entegrasyonu</li>
+            <li>VPS kurulum yardımı</li>
+          </ul>
+          <button class="btn-plan btn-plan-primary" onclick="openModal('Team', '20€/ay')">Başla</button>
+        </div>
+      </div>
+      <p style="text-align:center; margin-top:24px; color:var(--muted); font-size:14px;">
+        Kendi kendine barındırmak ister misin? <a href="https://github.com/boysplaydraw/ciphernode" target="_blank">Açık kaynak sürümü ücretsiz.</a>
+      </p>
+    </section>
+
+    <footer>
+      <div>© 2026 RelayWorks — <a href="/privacy">Gizlilik</a> · <a href="/terms">Kullanım Koşulları</a></div>
+      <div>
+        <a href="https://github.com/boysplaydraw/ciphernode" target="_blank" rel="noopener noreferrer">GitHub</a>
+        &nbsp;·&nbsp;
+        <a href="mailto:support@cipher-node.site">Destek</a>
+      </div>
+    </footer>
+
+    <!-- MODAL -->
+    <div class="modal-overlay" id="modal-overlay" onclick="closeModalOnOverlay(event)">
+      <div class="modal">
+        <h2>Aboneliği Başlat</h2>
+        <p>Stripe güvenli ödeme sayfasına yönlendirileceksiniz.</p>
+        <div class="modal-plan-display" id="modal-plan-display"></div>
+        <label for="modal-email">E-posta adresiniz</label>
+        <input type="email" id="modal-email" placeholder="ornek@mail.com" autocomplete="email" />
+        <div class="modal-error" id="modal-error"></div>
+        <div class="modal-actions">
+          <button class="modal-cancel" onclick="closeModal()">İptal</button>
+          <button class="modal-submit" id="modal-submit" onclick="submitModal()">Stripe ile Öde →</button>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      var selectedPlan = '';
+
+      function openModal(plan, price) {
+        selectedPlan = plan.toLowerCase();
+        document.getElementById('modal-plan-display').textContent = plan + ' — ' + price;
+        document.getElementById('modal-email').value = '';
+        document.getElementById('modal-error').style.display = 'none';
+        document.getElementById('modal-overlay').classList.add('open');
+        setTimeout(function() { document.getElementById('modal-email').focus(); }, 50);
+      }
+
+      function closeModal() {
+        document.getElementById('modal-overlay').classList.remove('open');
+      }
+
+      function closeModalOnOverlay(e) {
+        if (e.target === document.getElementById('modal-overlay')) closeModal();
+      }
+
+      async function submitModal() {
+        var email = document.getElementById('modal-email').value.trim();
+        var errorEl = document.getElementById('modal-error');
+        var submitBtn = document.getElementById('modal-submit');
+
+        errorEl.style.display = 'none';
+
+        if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+          errorEl.textContent = 'Lütfen geçerli bir e-posta adresi girin.';
+          errorEl.style.display = 'block';
+          return;
+        }
+
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Yönlendiriliyor...';
+
+        try {
+          var res = await fetch('/api/create-checkout', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email: email, plan: selectedPlan })
+          });
+          var data = await res.json();
+          if (!res.ok || !data.url) {
+            throw new Error(data.error || 'Ödeme oturumu oluşturulamadı.');
+          }
+          window.location.href = data.url;
+        } catch (err) {
+          errorEl.textContent = err.message || 'Bir hata oluştu. Lütfen tekrar deneyin.';
+          errorEl.style.display = 'block';
+          submitBtn.disabled = false;
+          submitBtn.textContent = 'Stripe ile Öde →';
+        }
+      }
+
+      document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape') closeModal();
+        if (e.key === 'Enter' && document.getElementById('modal-overlay').classList.contains('open')) {
+          submitModal();
+        }
+      });
+    </script>
+  </body>
+</html>

@@ -379,7 +379,7 @@ npm run check:types # TypeScript tip kontrolü
 
 ## Güvenlik Bildirimi
 
-Güvenlik açıkları için GitHub Issues **kullanmayın**. Lütfen doğrudan iletişime geçin.
+Güvenlik açıkları için GitHub Issues **kullanmayın**. Lütfen doğrudan `support@cipher-node.site` ile iletişime geçin.
 
 ---
 

@@ -35,6 +35,9 @@ yarn-error.*
 
 # local assistant/editor state
 .claude/settings.local.json
+.replit
+replit.md
+.cache/
 
 # macOS
 .DS_Store

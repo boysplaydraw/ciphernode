@@ -11,6 +11,8 @@ import * as path from "path";
 import * as https from "https";
 import * as http from "http";
 import { isAllowedOrigin } from "./security";
+import { apiLimiter } from "./middleware/rateLimit";
+import { createStripeRouter } from "./routes/stripe";
 
 const app = express();
 const log = console.log;
@@ -561,7 +563,10 @@ function resolveSSLPaths(): { cert: string; key: string } | null {
   setupCors(app);
   setupSecurityHeaders(app);
   setupBodyParsing(app);
+  app.use("/api", apiLimiter);
   setupRequestLogging(app);
+
+  app.use("/api", createStripeRouter());
 
   configureExpoAndLanding(app);
 

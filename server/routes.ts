@@ -5,6 +5,7 @@ import type { Server as HttpsServer } from "node:https";
 import { Server as SocketIOServer } from "socket.io";
 import { getOnionAddress } from "./tor-hidden-service";
 import { isAllowedOrigin } from "./security";
+import { createStatsRouter } from "./routes/stats";
 
 // ── Per-IP rate limiter ──────────────────────────────────────────────
 const ipRequestCounts = new Map<string, { count: number; resetAt: number }>();
@@ -240,16 +241,6 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/stats", (_req, res) => {
-    res.json({
-      connectedUsers: connectedUsers.size,
-      pendingMessages: Array.from(pendingMessages.values()).reduce(
-        (acc, msgs) => acc + msgs.length,
-        0,
-      ),
-    });
-  });
-
   /**
    * Şifreli dosya yükle — RAM'de saklanır, 24 saat sonra otomatik silinir.
    * Dosya içeriği zaten client tarafında E2EE ile şifrelenmiş olmalı.
@@ -406,6 +397,8 @@ export async function registerRoutes(
       methods: ["GET", "POST"],
     },
   });
+
+  app.use("/api", createStatsRouter(io));
 
   io.on("connection", (socket) => {
     relayLog(`Client connected: ${socket.id}`, "Client connected");

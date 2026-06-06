@@ -97,6 +97,7 @@ func registerStaticRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/app/", serveSPA("dist", "/app/"))
 	mux.HandleFunc("/privacy", serveNamedFile("website/privacy.html"))
 	mux.HandleFunc("/terms", serveNamedFile("website/terms.html"))
+	mux.HandleFunc("/relayworks", serveNamedFile("website/relayworks.html"))
 	mux.Handle("/assets/", http.StripPrefix("/assets/", http.FileServer(http.Dir("assets"))))
 	mux.Handle("/website/", http.StripPrefix("/website/", http.FileServer(http.Dir("website"))))
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {

@@ -36,7 +36,7 @@ import type { ChatsStackParamList } from "@/navigation/ChatsStackNavigator";
 import ConnectionStatus from "@/components/ConnectionStatus";
 import { useLanguage } from "@/constants/language";
 import { getApiUrl, getOfficialServerUrl } from "@/lib/query-client";
-import { onStatusChange } from "@/lib/socket";
+import { onStatusChange, onMessage, onGroupMessage } from "@/lib/socket";
 
 type NavigationProp = NativeStackNavigationProp<
   ChatsStackParamList,
@@ -189,6 +189,7 @@ export default function ChatsListScreen() {
       else if (status === "registered" || status === "connected")
         setIsDisconnected(false);
     });
+
     return unsub;
   }, []);
 
@@ -257,6 +258,13 @@ export default function ChatsListScreen() {
       loadData();
     }, [loadData]),
   );
+
+  // Yeni mesaj gelince listeyi anında güncelle (kayıtlı olmayan kişilerden gelenler dahil)
+  useEffect(() => {
+    const unsubMsg = onMessage(() => { loadData(); });
+    const unsubGroup = onGroupMessage(() => { loadData(); });
+    return () => { unsubMsg(); unsubGroup(); };
+  }, [loadData]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);

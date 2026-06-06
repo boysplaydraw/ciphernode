@@ -40,7 +40,6 @@ export default function ContactsScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [selectedContact, setSelectedContact] = useState<Contact | null>(null);
   const [showActionSheet, setShowActionSheet] = useState(false);
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   const t = {
     contacts: language === "tr" ? "Kişiler" : "Contacts",
@@ -114,21 +113,31 @@ export default function ContactsScreen() {
     setShowActionSheet(true);
   };
 
-  const handleDeleteContact = async () => {
-    if (!selectedContact) return;
-    await deleteContactAndChat(selectedContact.id);
-    const identity = await getIdentity();
-    if (identity?.id) {
-      try {
-        await pushContactsToServer(identity.id, getApiUrl());
-      } catch {}
-    }
-    if (Platform.OS !== "web") {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    }
-    setSelectedContact(null);
-    setShowDeleteConfirm(false);
-    loadContacts();
+  const confirmDeleteContact = (contact: Contact) => {
+    Alert.alert(
+      t.delete,
+      t.deleteConfirm,
+      [
+        { text: t.cancel, style: "cancel" },
+        {
+          text: t.delete,
+          style: "destructive",
+          onPress: async () => {
+            await deleteContactAndChat(contact.id);
+            const identity = await getIdentity();
+            if (identity?.id) {
+              try {
+                await pushContactsToServer(identity.id, getApiUrl());
+              } catch {}
+            }
+            if (Platform.OS !== "web") {
+              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+            }
+            loadContacts();
+          },
+        },
+      ],
+    );
   };
 
   const actionSheetOptions: ActionSheetOption[] = [
@@ -142,7 +151,9 @@ export default function ContactsScreen() {
     },
     {
       text: t.delete,
-      onPress: () => setShowDeleteConfirm(true),
+      onPress: () => {
+        if (selectedContact) confirmDeleteContact(selectedContact);
+      },
       style: "destructive",
     },
     {
@@ -157,29 +168,36 @@ export default function ContactsScreen() {
     const initial = displayName.charAt(0).toUpperCase();
 
     return (
-      <Pressable
-        onPress={() => handleContactPress(item)}
-        onLongPress={() => handleContactLongPress(item)}
-        style={({ pressed }) => [
-          styles.contactItem,
-          pressed && styles.contactItemPressed,
-        ]}
-      >
-        <View style={styles.avatar}>
-          <ThemedText style={styles.avatarText}>{initial}</ThemedText>
-        </View>
-        <View style={styles.contactInfo}>
-          <ThemedText style={styles.contactName} numberOfLines={1}>
-            {displayName}
-          </ThemedText>
-          <ThemedText style={styles.contactId}>{item.id}</ThemedText>
-        </View>
-        <Feather
-          name="chevron-right"
-          size={20}
-          color={Colors.dark.textSecondary}
-        />
-      </Pressable>
+      <View style={styles.contactRow}>
+        <Pressable
+          onPress={() => handleContactPress(item)}
+          onLongPress={() => handleContactLongPress(item)}
+          style={({ pressed }) => [
+            styles.contactItem,
+            pressed && styles.contactItemPressed,
+          ]}
+        >
+          <View style={styles.avatar}>
+            <ThemedText style={styles.avatarText}>{initial}</ThemedText>
+          </View>
+          <View style={styles.contactInfo}>
+            <ThemedText style={styles.contactName} numberOfLines={1}>
+              {displayName}
+            </ThemedText>
+            <ThemedText style={styles.contactId}>{item.id}</ThemedText>
+          </View>
+        </Pressable>
+        <Pressable
+          onPress={() => confirmDeleteContact(item)}
+          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          style={({ pressed }) => [
+            styles.deleteBtn,
+            pressed && { opacity: 0.5 },
+          ]}
+        >
+          <Feather name="trash-2" size={18} color={Colors.dark.error} />
+        </Pressable>
+      </View>
     );
   };
 
@@ -275,24 +293,6 @@ export default function ContactsScreen() {
         options={actionSheetOptions}
       />
 
-      <ActionSheet
-        visible={showDeleteConfirm}
-        onClose={() => setShowDeleteConfirm(false)}
-        title={t.delete}
-        message={t.deleteConfirm}
-        options={[
-          {
-            text: t.delete,
-            style: "destructive",
-            onPress: handleDeleteContact,
-          },
-          {
-            text: t.cancel,
-            style: "cancel",
-            onPress: () => setShowDeleteConfirm(false),
-          },
-        ]}
-      />
     </ThemedView>
   );
 }
@@ -336,13 +336,22 @@ const styles = StyleSheet.create({
   emptyListContent: {
     flex: 1,
   },
+  contactRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: Spacing.sm,
+  },
   contactItem: {
+    flex: 1,
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: Colors.dark.backgroundSecondary,
     borderRadius: BorderRadius.md,
     padding: Spacing.md,
-    marginBottom: Spacing.sm,
+  },
+  deleteBtn: {
+    padding: Spacing.md,
+    marginLeft: Spacing.xs,
   },
   contactItemPressed: {
     backgroundColor: Colors.dark.backgroundTertiary,

@@ -284,30 +284,19 @@ export default function ChatsListScreen() {
       {
         text: t.delete,
         style: "destructive",
-        onPress: () => {
-          const msg =
-            item.type === "chat" ? t.deleteConversation : t.deleteGroup;
-          Alert.alert(t.deleteTitle, msg, [
-            { text: t.cancel, style: "cancel" },
-            {
-              text: t.delete,
-              style: "destructive",
-              onPress: async () => {
-                if (item.type === "chat") {
-                  await deleteContactAndChat(item.contactId);
-                  const identity = await getIdentity();
-                  if (identity?.id) {
-                    try {
-                      await pushContactsToServer(identity.id, getApiUrl());
-                    } catch {}
-                  }
-                } else {
-                  await deleteGroup(item.id);
-                }
-                loadData();
-              },
-            },
-          ]);
+        onPress: async () => {
+          if (item.type === "chat") {
+            await deleteContactAndChat(item.contactId);
+            const identity = await getIdentity();
+            if (identity?.id) {
+              try {
+                await pushContactsToServer(identity.id, getApiUrl());
+              } catch {}
+            }
+          } else {
+            await deleteGroup(item.id);
+          }
+          loadData();
         },
       },
       { text: t.cancel, style: "cancel", onPress: () => {} },

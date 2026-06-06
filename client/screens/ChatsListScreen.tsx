@@ -335,12 +335,26 @@ export default function ChatsListScreen() {
     () => navigation.navigate("ArchivedChats"),
     [navigation],
   );
+  const handleBroadcast = React.useCallback(
+    () => navigation.navigate("Broadcast"),
+    [navigation],
+  );
 
   React.useLayoutEffect(() => {
     navigation.setOptions({
       headerLeft: () => <ConnectionStatus />,
       headerRight: () => (
         <View style={styles.headerRight}>
+          <Pressable
+            onPress={handleBroadcast}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            style={({ pressed }) => [
+              styles.headerButton,
+              pressed && styles.headerButtonPressed,
+            ]}
+          >
+            <Feather name="radio" size={20} color={Colors.dark.text} />
+          </Pressable>
           <Pressable
             onPress={handleNewChat}
             hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
@@ -364,7 +378,7 @@ export default function ChatsListScreen() {
         </View>
       ),
     });
-  }, [navigation, handleNewChat, handleArchivedChats]);
+  }, [navigation, handleNewChat, handleArchivedChats, handleBroadcast]);
 
   return (
     <ThemedView style={styles.container}>

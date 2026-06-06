@@ -409,6 +409,27 @@ export default function ChatThreadScreen() {
     return unsub;
   }, [contactId, identity, contact]);
 
+  // Relay üzerinden gelen mesajları anlık göster (App.tsx global handler depolamayı yapar, burada UI'ı güncelliyoruz)
+  useEffect(() => {
+    const unsub = onMessage((msg) => {
+      if (msg.from !== contactId) return;
+      const newMsg: Message = {
+        id: msg.id,
+        content: msg.encrypted,
+        encrypted: msg.encrypted,
+        senderId: msg.from,
+        recipientId: identity?.id ?? "",
+        timestamp: msg.timestamp,
+        status: "received",
+      };
+      setMessages((prev) => {
+        if (prev.some((m) => m.id === newMsg.id)) return prev;
+        return [...prev, newMsg];
+      });
+    });
+    return unsub;
+  }, [contactId, identity?.id]);
+
   // Relay durumu değişince P2P bağlantısını yönet
   useEffect(() => {
     const unsub = onRelayStatusChange((healthy) => {

@@ -8,6 +8,7 @@ import ArchivedChatsScreen from "@/screens/ArchivedChatsScreen";
 import GroupThreadScreen from "@/screens/GroupThreadScreen";
 import GroupInfoScreen from "@/screens/GroupInfoScreen";
 import NewChatScreen from "@/screens/NewChatScreen";
+import BroadcastScreen from "@/screens/BroadcastScreen";
 import { useScreenOptions } from "@/hooks/useScreenOptions";
 import { useLanguage } from "@/constants/language";
 
@@ -20,6 +21,7 @@ export type ChatsStackParamList = {
   GroupThread: { groupId: string };
   GroupInfo: { groupId: string };
   NewChat: undefined;
+  Broadcast: undefined;
 };
 
 const Stack = createNativeStackNavigator<ChatsStackParamList>();
@@ -84,6 +86,13 @@ export default function ChatsStackNavigator() {
         component={NewChatScreen}
         options={{
           headerTitle: language === "tr" ? "Yeni Sohbet" : "New Chat",
+        }}
+      />
+      <Stack.Screen
+        name="Broadcast"
+        component={BroadcastScreen}
+        options={{
+          headerTitle: language === "tr" ? "Toplu Gönder" : "Broadcast",
         }}
       />
     </Stack.Navigator>

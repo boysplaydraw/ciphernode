@@ -25,7 +25,7 @@
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
       "package": "com.ciphernode.app",
-      "versionCode": 13
+      "versionCode": 14
     },
     "web": {
       "output": "single",
@@ -60,6 +60,10 @@
             "targetSdkVersion": 36,
             "minSdkVersion": 24,
             "usesCleartextTraffic": true,
+            "useLegacyPackaging": false,
+            "buildArchs": [
+              "arm64-v8a"
+            ],
             "packagingOptions": {
               "pickFirst": [
                 "lib/x86/libcrypto.so",

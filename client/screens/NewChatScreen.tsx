@@ -90,7 +90,7 @@ export default function NewChatScreen() {
   };
 
   const handleAddContact = () => {
-    navigation.getParent()?.navigate("AddContactTab" as never);
+    navigation.navigate("AddContact" as never);
   };
 
   if (contacts.length === 0) {

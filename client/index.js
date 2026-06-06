@@ -6,6 +6,16 @@ globalThis.Buffer = globalThis.Buffer || require("buffer").Buffer;
 globalThis.process = globalThis.process || require("process");
 
 try {
+  if (Platform.OS !== "web") {
+    require("react-native-get-random-values");
+    const { install } = require("react-native-quick-crypto");
+    install();
+  }
+} catch (e) {
+  console.warn("Crypto polyfill failed:", e);
+}
+
+try {
   const { recordCrash, recordStartupDiagnostics } = require("./lib/diagnostics");
   recordStartupDiagnostics("index.js loaded");
 
@@ -19,20 +29,6 @@ try {
   }
 } catch (e) {
   console.error("Crash reporter failed to load:", e);
-}
-
-try {
-  if (Platform.OS !== "web") {
-    require("react-native-get-random-values");
-    const { install } = require("react-native-quick-crypto");
-    install();
-  }
-} catch (e) {
-  if (globalThis.ErrorUtils) {
-    globalThis.ErrorUtils.reportFatalError(e);
-  } else {
-    console.error("Crypto polyfill failed:", e);
-  }
 }
 
 // Polyfill hazır — artık App ve openpgp güvenle yüklenebilir

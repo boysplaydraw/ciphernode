@@ -41,7 +41,10 @@ if (result.status !== 0) {
   process.exit(result.status ?? 1);
 }
 
+// Verify the server URL was baked in by Expo (via EXPO_PUBLIC_SERVER_URL env var).
+// If found, no further patching is needed. If missing, apply legacy regex patches as fallback.
 const webJsDir = join(outputDir, "_expo", "static", "js", "web");
+let urlFoundInBundle = false;
 let patchedServerBundle = false;
 
 for (const file of readdirSync(webJsDir)) {
@@ -49,6 +52,12 @@ for (const file of readdirSync(webJsDir)) {
 
   const path = join(webJsDir, file);
   let contents = readFileSync(path, "utf8");
+
+  if (contents.includes(normalizedServerUrl)) {
+    urlFoundInBundle = true;
+    continue;
+  }
+
   const original = contents;
 
   contents = contents.replace(
@@ -66,8 +75,8 @@ for (const file of readdirSync(webJsDir)) {
   }
 }
 
-if (!patchedServerBundle) {
-  console.error("Could not patch EXPO_PUBLIC_SERVER_URL into the Hostinger JS bundle.");
+if (!urlFoundInBundle && !patchedServerBundle) {
+  console.error("Could not inject EXPO_PUBLIC_SERVER_URL into the Hostinger JS bundle.");
   process.exit(1);
 }
 

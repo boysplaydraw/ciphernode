@@ -16,7 +16,7 @@ export interface Message {
   senderId: string;
   recipientId: string;
   timestamp: number;
-  status: "sending" | "sent" | "delivered" | "read" | "received";
+  status: "sending" | "sent" | "delivered" | "read" | "received" | "failed";
   expiresAt?: number;
   groupId?: string;
 }

@@ -253,6 +253,28 @@ function MessageBubble({
         >
           {formatTime(message.timestamp)}
         </ThemedText>
+        {isMine && (
+          <Feather
+            name={
+              message.status === "failed"
+                ? "x-circle"
+                : message.status === "sending"
+                  ? "clock"
+                  : message.status === "delivered" || message.status === "read"
+                    ? "check-circle"
+                    : "check"
+            }
+            size={10}
+            color={
+              message.status === "failed"
+                ? Colors.dark.warning
+                : message.status === "read"
+                  ? Colors.dark.primary
+                  : Colors.dark.buttonText
+            }
+            style={styles.statusIcon}
+          />
+        )}
       </View>
     </Pressable>
   );
@@ -948,33 +970,32 @@ export default function ChatThreadScreen() {
     // Mesaj gönderme: önce relay dene, yoksa P2P DataChannel kullan
     if (isRelayConnected()) {
       socketSendMessage(contactId, encryptedContent, messageId);
+      setMessages((prev) =>
+        prev.map((m) => (m.id === messageId ? { ...m, status: "sent" } : m)),
+      );
+      await updateMessageStatus(contactId, messageId, "sent");
     } else if (contact.nostrPubkey) {
       // Relay yok → P2P bağlantısı kur (yoksa) ve gönder
       if (!isPeerConnected(contactId)) {
         connectToPeer(contactId, contact.nostrPubkey).catch(() => {});
       }
       // DataChannel açılınca gönder (kısa gecikme ile dene)
-      setTimeout(() => {
+      setTimeout(async () => {
         const sent = sendP2PMessage(contactId, encryptedContent);
-        if (!sent) {
-          // Kanal henüz hazır değil — kuyruğa almak yerine kullanıcıyı bildir
+        if (sent) {
           setMessages((prev) =>
             prev.map((m) =>
-              m.id === messageId ? { ...m, status: "sending" } : m,
+              m.id === messageId ? { ...m, status: "sent" } : m,
             ),
           );
+          await updateMessageStatus(contactId, messageId, "sent");
         }
+        // sent=false → kanal hazır değil, "sending" durumunda kalır
       }, 500);
     } else {
-      // Ne relay ne Nostr pubkey — mesaj kuyrukta beklesin
+      // Ne relay ne Nostr pubkey — mesaj kuyrukta "sending" olarak bekler
       console.warn("[Chat] Relay yok, Nostr pubkey yok — mesaj kuyruğa alındı");
     }
-
-    // Mesaj gönderildi → "sent" yap
-    setMessages((prev) =>
-      prev.map((m) => (m.id === messageId ? { ...m, status: "sent" } : m)),
-    );
-    await updateMessageStatus(contactId, messageId, "sent");
 
     if (Platform.OS !== "web") {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -1292,6 +1313,10 @@ const styles = StyleSheet.create({
   },
   lockIcon: {
     marginRight: 4,
+  },
+  statusIcon: {
+    marginLeft: 3,
+    opacity: 0.85,
   },
   timerContainer: {
     flexDirection: "row",

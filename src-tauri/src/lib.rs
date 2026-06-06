@@ -56,10 +56,7 @@ pub fn run() {
                 .shell()
                 .sidecar("ciphernode-backend")
                 .map_err(|e| e.to_string())?
-                .args(&[
-                    "--port", &port.to_string(),
-                    "--auth-token", &token
-                ]);
+                .env("PORT", port.to_string());
 
             // Tauri v2 spawn returns a tuple of (Receiver<CommandEvent>, Child)
             let (_rx, child) = sidecar_command.spawn().map_err(|e| e.to_string())?;

@@ -397,7 +397,7 @@ CipherNode aktif geliştirme aşamasındadır. Güvenlik öncelikli olarak tasar
 
 ---
 
-*Son güncelleme: Nisan 2026*
+*Son güncelleme: Haziran 2026*
 ## Go/Tauri Migration Status
 
 This repository contains the Go WebSocket relay backend and a Tauri desktop scaffold:

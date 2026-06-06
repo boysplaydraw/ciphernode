@@ -25,7 +25,7 @@
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
       "package": "com.ciphernode.app",
-      "versionCode": 14
+      "versionCode": 15
     },
     "web": {
       "output": "single",

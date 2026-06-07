@@ -1,6 +1,6 @@
 {
   "name": "ciphernode",
-  "version": "1.0.0",
+  "version": "0.1.3",
   "description": "Accountless self-hostable E2EE messenger with Go relay, Web, Mobile and Desktop clients.",
   "keywords": [
     "e2ee",

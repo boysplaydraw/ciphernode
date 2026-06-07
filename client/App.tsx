@@ -34,12 +34,16 @@ import {
   hasCompletedOnboarding,
   getLanguage,
   getContacts,
+  addContact,
   updateContact,
   saveMessage,
   pushContactsToServer,
   pullContactsFromServer,
 } from "@/lib/storage";
-import { getOrCreateIdentity } from "@/lib/crypto";
+import {
+  getOrCreateIdentity,
+  parsePublicKeyFingerprint,
+} from "@/lib/crypto";
 import { LanguageContext, type Language } from "@/constants/language";
 import * as LocalAuthentication from "expo-local-authentication";
 import * as ScreenCapture from "expo-screen-capture";
@@ -48,6 +52,7 @@ import { Colors } from "@/constants/theme";
 import {
   initSocket,
   onUserOnline,
+  onContactAdd,
   onMessage,
   setGhostMode,
   setStegMode,
@@ -57,6 +62,7 @@ import { getPrivacySettings } from "@/lib/storage";
 import {
   isElectron,
 } from "@/lib/electron-bridge";
+import { initTauriBackend } from "@/lib/tauri-bridge";
 import { hashPin, isValidPin } from "@/lib/app-lock";
 import { recordCrash, recordStartupDiagnostics } from "@/lib/diagnostics";
 
@@ -96,6 +102,57 @@ export default function App() {
         await updateContact(userId, { publicKey });
         console.log(`[App] Public key synced for contact: ${userId}`);
       }
+    });
+
+    // Karşı taraf bizi kişi olarak eklediğinde otomatik karşılıklı ekleme.
+    // Böylece eklenen kişi de bizi listesinde anında görür.
+    const unsubContactAdd = onContactAdd(async ({ from, publicKey, nostrPubkey, displayName }) => {
+      try {
+        if (!from) return;
+        const identity = await getOrCreateIdentity();
+        if (from === identity.id) return;
+
+        const contacts = await getContacts();
+        const existing = contacts.find((c) => c.id === from);
+        if (existing) {
+          // Zaten ekli — sadece eksik public key'i tamamla
+          if (!existing.publicKey && publicKey) {
+            await updateContact(from, { publicKey });
+          }
+          return;
+        }
+
+        let resolvedKey = publicKey || "";
+        if (!resolvedKey) {
+          try {
+            const apiUrl = getApiUrl();
+            const res = await fetch(
+              `${apiUrl}api/users/${encodeURIComponent(from)}/publickey`,
+            );
+            if (res.ok) {
+              const data = await res.json();
+              if (data.publicKey) resolvedKey = data.publicKey;
+            }
+          } catch {}
+        }
+
+        let fingerprint = from;
+        if (resolvedKey) {
+          try {
+            fingerprint = await parsePublicKeyFingerprint(resolvedKey);
+          } catch {}
+        }
+
+        await addContact({
+          id: from,
+          publicKey: resolvedKey,
+          fingerprint,
+          displayName: displayName || "",
+          addedAt: Date.now(),
+          ...(nostrPubkey ? { nostrPubkey } : {}),
+        });
+        console.log(`[App] Auto-added contact from incoming request: ${from}`);
+      } catch {}
     });
 
     // Global mesaj handler — hangi ekranda olunursa olsun gelen mesajları kaydet
@@ -143,6 +200,7 @@ export default function App() {
 
     return () => {
       unsubUserOnline();
+      unsubContactAdd();
       unsubMessage();
       appStateSub.remove();
       if (errorUtils?.setGlobalHandler && previousHandler) {
@@ -193,6 +251,9 @@ export default function App() {
 
       const completed = await hasCompletedOnboarding();
       await loadCustomServerUrl();
+      // Tauri masaüstünde: paketlenmiş Go sidecar relay'ini keşfet ve bağlan
+      // (kullanıcı kendi sunucusunu girmediyse). Socket bağlantısından önce olmalı.
+      await initTauriBackend();
       recordStartupDiagnostics("settings loaded");
       setShowOnboarding(!completed);
 

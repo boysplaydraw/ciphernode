@@ -4,7 +4,7 @@ use rand::{thread_rng, Rng};
 use rand::distributions::Alphanumeric;
 
 struct SidecarState {
-    child: Arc<Mutex<Option<tauri_plugin_shell::process::Child>>>,
+    child: Arc<Mutex<Option<tauri_plugin_shell::process::CommandChild>>>,
     port: u16,
     token: String,
 }
@@ -36,7 +36,7 @@ fn generate_secure_token() -> String {
 pub fn run() {
     let port = find_free_port();
     let token = generate_secure_token();
-    let child_process: Arc<Mutex<Option<tauri_plugin_shell::process::Child>>> = Arc::new(Mutex::new(None));
+    let child_process: Arc<Mutex<Option<tauri_plugin_shell::process::CommandChild>>> = Arc::new(Mutex::new(None));
     let child_process_clone = Arc::clone(&child_process);
     let child_process_for_run = Arc::clone(&child_process);
 

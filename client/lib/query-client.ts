@@ -23,6 +23,11 @@ export function setCustomServerUrl(url: string | null): void {
   cachedCustomServerUrl = url || null;
 }
 
+/** Bellekteki aktif özel sunucu URL'sini döndür (yoksa null). */
+export function getCustomServerUrl(): string | null {
+  return cachedCustomServerUrl;
+}
+
 // Resmi sunucu URL — build zamanında EXPO_PUBLIC_SERVER_URL ile ayarlanır
 const OFFICIAL_SERVER_URL =
   process.env.EXPO_PUBLIC_SERVER_URL ||

@@ -22,6 +22,10 @@ func (*redisPlaceholder) SetPublicKey(string, string)        {}
 func (*redisPlaceholder) GetPublicKey(string) (string, bool) { return "", false }
 func (*redisPlaceholder) AddPending(string, PendingMessage)  {}
 func (*redisPlaceholder) PopPending(string) []PendingMessage { return nil }
+func (*redisPlaceholder) SaveContacts(string, []byte)        {}
+func (*redisPlaceholder) GetContacts(string) ([]byte, bool)  { return nil, false }
+func (*redisPlaceholder) AddPendingContact(string, PendingContact) {}
+func (*redisPlaceholder) PopPendingContacts(string) []PendingContact { return nil }
 func (*redisPlaceholder) SaveGroup(Group)                    {}
 func (*redisPlaceholder) GetGroup(string) (Group, bool)      { return Group{}, false }
 func (*redisPlaceholder) AddGroupMember(string, string)      {}

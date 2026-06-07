@@ -71,7 +71,7 @@ export default function OnboardingScreen({
   const [customServerUrl, setCustomServerUrlInput] = useState("");
   const [serverTesting, setServerTesting] = useState(false);
   const [serverTestResult, setServerTestResult] = useState<
-    "idle" | "ok" | "fail"
+    "idle" | "ok" | "no-internet" | "unreachable"
   >("idle");
   const [checkingTor, setCheckingTor] = useState(false);
   const [torCheckResult, setTorCheckResult] = useState<
@@ -225,47 +225,82 @@ export default function OnboardingScreen({
     if (saved) goToStep(3);
   };
 
-  const handleTestServer = async () => {
-    const targetUrl = getSelectedServerUrl();
-    if (!targetUrl) {
-      Alert.alert(
-        isTr ? "Sunucu yok" : "No server",
-        isTr
-          ? "Bu build icin varsayilan sunucu yok. Kendi sunucu adresini gir."
-          : "This build has no default server. Enter your own server address.",
-      );
-      return;
-    }
+  const runServerTest = useCallback(
+    async (silent: boolean) => {
+      const targetUrl = getSelectedServerUrl();
+      if (!targetUrl) {
+        if (!silent) {
+          Alert.alert(
+            isTr ? "Sunucu yok" : "No server",
+            isTr
+              ? "Bu build icin varsayilan sunucu yok. Kendi sunucu adresini gir."
+              : "This build has no default server. Enter your own server address.",
+          );
+        }
+        return;
+      }
 
-    const normalizedTargetUrl = normalizeRelayUrl(targetUrl);
-    if (!normalizedTargetUrl) {
-      Alert.alert(
-        isTr ? "Gecersiz URL" : "Invalid URL",
-        isTr
-          ? "Sadece http:// veya https:// relay adresi kullan."
-          : "Use only an http:// or https:// relay address.",
-      );
-      return;
-    }
+      const normalizedTargetUrl = normalizeRelayUrl(targetUrl);
+      if (!normalizedTargetUrl) {
+        if (!silent) {
+          Alert.alert(
+            isTr ? "Gecersiz URL" : "Invalid URL",
+            isTr
+              ? "Sadece http:// veya https:// relay adresi kullan."
+              : "Use only an http:// or https:// relay address.",
+          );
+        }
+        return;
+      }
 
-    setServerTesting(true);
-    setServerTestResult("idle");
-    try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 6000);
-      const response = await fetch(
-        new URL("/api/health", normalizedTargetUrl).toString(),
-        { signal: controller.signal },
-      );
-      clearTimeout(timeoutId);
-      const data = await response.json().catch(() => null);
-      setServerTestResult(response.ok && data?.status === "ok" ? "ok" : "fail");
-    } catch {
-      setServerTestResult("fail");
-    } finally {
-      setServerTesting(false);
-    }
+      setServerTesting(true);
+      setServerTestResult("idle");
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 6000);
+        const response = await fetch(
+          new URL("/api/health", normalizedTargetUrl).toString(),
+          { signal: controller.signal },
+        );
+        clearTimeout(timeoutId);
+        const data = await response.json().catch(() => null);
+        setServerTestResult(
+          response.ok && data?.status === "ok" ? "ok" : "unreachable",
+        );
+      } catch (err) {
+        // fetch, ag seviyesinde bir sorunda (DNS/baglanti yok) TypeError firlatir;
+        // bu durumda internet baglantisi yok demektir. Diger hatalar (timeout, vb.)
+        // internet var ama sunucuya ulasilamadigini gosterir.
+        setServerTestResult(
+          err instanceof TypeError ? "no-internet" : "unreachable",
+        );
+      } finally {
+        setServerTesting(false);
+      }
+    },
+    [customServerUrl, isTr, serverType, officialServerUrl],
+  );
+
+  const handleTestServer = () => {
+    runServerTest(false);
   };
+
+  // Adim 2'ye girildiginde veya secilen sunucu adresi degistiginde
+  // internet + sunucu erisilebilirligini otomatik olarak kontrol et.
+  useEffect(() => {
+    if (step !== 2) return;
+    const targetUrl = getSelectedServerUrl();
+    const normalizedTargetUrl = targetUrl ? normalizeRelayUrl(targetUrl) : null;
+    if (!normalizedTargetUrl) {
+      setServerTestResult("idle");
+      return;
+    }
+    setServerTestResult("idle");
+    const timer = setTimeout(() => {
+      runServerTest(true);
+    }, 600);
+    return () => clearTimeout(timer);
+  }, [step, serverType, customServerUrl, officialServerUrl, runServerTest]);
 
   const doFinish = useCallback(
     async (withTor: boolean) => {
@@ -816,7 +851,9 @@ export default function OnboardingScreen({
             style={[
               styles.serverStatus,
               serverTestResult === "ok" && styles.serverStatusOk,
-              serverTestResult === "fail" && styles.serverStatusFail,
+              (serverTestResult === "no-internet" ||
+                serverTestResult === "unreachable") &&
+                styles.serverStatusFail,
             ]}
           >
             {serverTesting ? (
@@ -826,15 +863,18 @@ export default function OnboardingScreen({
                 name={
                   serverTestResult === "ok"
                     ? "check-circle"
-                    : serverTestResult === "fail"
-                      ? "alert-circle"
-                      : "wifi"
+                    : serverTestResult === "no-internet"
+                      ? "wifi-off"
+                      : serverTestResult === "unreachable"
+                        ? "alert-circle"
+                        : "wifi"
                 }
                 size={14}
                 color={
                   serverTestResult === "ok"
                     ? Colors.dark.success
-                    : serverTestResult === "fail"
+                    : serverTestResult === "no-internet" ||
+                        serverTestResult === "unreachable"
                       ? Colors.dark.warning
                       : Colors.dark.textSecondary
                 }
@@ -844,24 +884,31 @@ export default function OnboardingScreen({
               style={[
                 styles.serverStatusText,
                 serverTestResult === "ok" && { color: Colors.dark.success },
-                serverTestResult === "fail" && { color: Colors.dark.warning },
+                (serverTestResult === "no-internet" ||
+                  serverTestResult === "unreachable") && {
+                  color: Colors.dark.warning,
+                },
               ]}
             >
               {serverTesting
                 ? isTr
-                  ? "Sunucu test ediliyor..."
-                  : "Testing server..."
+                  ? "Internet ve sunucu baglantisi otomatik kontrol ediliyor..."
+                  : "Automatically checking internet and server connection..."
                 : serverTestResult === "ok"
                   ? isTr
-                    ? "Sunucu erisilebilir."
-                    : "Server is reachable."
-                  : serverTestResult === "fail"
+                    ? "Internet baglantin var ve sunucuya erisilebiliyor."
+                    : "You're online and the server is reachable."
+                  : serverTestResult === "no-internet"
                     ? isTr
-                      ? "Sunucuya ulasilamadi. Yine de kaydedip devam edebilirsin."
-                      : "Server could not be reached. You can still save and continue."
-                    : isTr
-                      ? "Istersen devam etmeden once baglantiyi test et."
-                      : "You can test the connection before continuing."}
+                      ? "Internet baglantisi bulunamadi. Baglantini kontrol et."
+                      : "No internet connection detected. Check your network."
+                    : serverTestResult === "unreachable"
+                      ? isTr
+                        ? "Internet baglantin var ama sunucuya ulasilamadi. Yine de kaydedip devam edebilirsin."
+                        : "You're online, but the server could not be reached. You can still save and continue."
+                      : isTr
+                        ? "Devam etmeden once baglanti otomatik olarak kontrol edilir."
+                        : "The connection is checked automatically before you continue."}
             </ThemedText>
           </View>
 

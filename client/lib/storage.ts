@@ -121,6 +121,27 @@ export async function setOnboardingComplete(): Promise<void> {
   await AsyncStorage.setItem(ONBOARDING_KEY, "true");
 }
 
+// ── Kişi listesi değişiklik bildirimi ───────────────────────────────────
+// Açık ekranların (sohbet listesi, kişiler) kişi eklendiğinde/güncellendiğinde
+// anında yenilenmesi için hafif bir pub/sub. useFocusEffect'e ek olarak çalışır.
+type ContactsChangeListener = () => void;
+const contactsChangeListeners = new Set<ContactsChangeListener>();
+
+export function onContactsChanged(listener: ContactsChangeListener): () => void {
+  contactsChangeListeners.add(listener);
+  return () => {
+    contactsChangeListeners.delete(listener);
+  };
+}
+
+function emitContactsChanged(): void {
+  contactsChangeListeners.forEach((listener) => {
+    try {
+      listener();
+    } catch {}
+  });
+}
+
 export async function getContacts(): Promise<Contact[]> {
   try {
     const stored = await AsyncStorage.getItem(CONTACTS_KEY);
@@ -137,6 +158,7 @@ export async function addContact(contact: Contact): Promise<void> {
   if (!exists) {
     contacts.push(contact);
     await AsyncStorage.setItem(CONTACTS_KEY, JSON.stringify(contacts));
+    emitContactsChanged();
   }
 }
 
@@ -150,6 +172,7 @@ export async function updateContact(
   if (idx !== -1) {
     contacts[idx] = { ...contacts[idx], ...updates };
     await AsyncStorage.setItem(CONTACTS_KEY, JSON.stringify(contacts));
+    emitContactsChanged();
   }
 }
 
@@ -158,6 +181,7 @@ export async function removeContact(contactId: string): Promise<void> {
   const contacts = await getContacts();
   const filtered = contacts.filter((c) => c.id !== contactId);
   await AsyncStorage.setItem(CONTACTS_KEY, JSON.stringify(filtered));
+  emitContactsChanged();
 }
 
 async function getDeletedContactIds(): Promise<Set<string>> {

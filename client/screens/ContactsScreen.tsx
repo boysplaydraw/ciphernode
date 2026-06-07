@@ -23,6 +23,7 @@ import { Colors, Spacing, BorderRadius } from "@/constants/theme";
 import {
   deleteContactAndChat,
   getContacts,
+  onContactsChanged,
   pushContactsToServer,
 } from "@/lib/storage";
 import { getIdentity, type Contact } from "@/lib/crypto";
@@ -71,6 +72,9 @@ export default function ContactsScreen() {
   useFocusEffect(
     useCallback(() => {
       loadContacts();
+      // Karşı taraftan gelen otomatik ekleme gibi canlı değişiklikleri anında yansıt
+      const unsub = onContactsChanged(loadContacts);
+      return unsub;
     }, [loadContacts]),
   );
 

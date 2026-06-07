@@ -25,7 +25,7 @@
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
       "package": "com.ciphernode.app",
-      "versionCode": 15
+      "versionCode": 18
     },
     "web": {
       "output": "single",
@@ -85,9 +85,7 @@
       }
     },
     "owner": "merorasto",
-    "runtimeVersion": {
-      "policy": "appVersion"
-    },
+    "runtimeVersion": "1.0.0",
     "updates": {
       "url": "https://u.expo.dev/f94664a7-d159-4608-ac06-44ff53dc20f6"
     }

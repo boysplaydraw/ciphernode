@@ -177,6 +177,8 @@ func (c *Client) handle(env protocol.Envelope) {
 	case "group:message":
 		atomic.AddUint64(&c.hub.metrics.GroupMessagesTotal, 1)
 		c.groupMessage(env)
+	case "contact:add":
+		c.contactAdd(env)
 	case "user:lookup":
 		var d struct {
 			UserID string `json:"userId"`
@@ -225,6 +227,15 @@ func (c *Client) register(env protocol.Envelope) {
 	}
 	c.emit(protocol.Outbound{Event: "registered", RequestID: env.RequestID})
 	c.broadcast("user:online", map[string]string{"userId": d.UserID, "publicKey": d.PublicKey})
+	for _, ct := range c.hub.store.PopPendingContacts(d.UserID) {
+		c.emit(protocol.Outbound{Event: "contact:add", Data: map[string]any{
+			"from":        ct.From,
+			"publicKey":   ct.PublicKey,
+			"nostrPubkey": ct.NostrPubkey,
+			"displayName": ct.DisplayName,
+			"timestamp":   ct.Timestamp,
+		}})
+	}
 	for _, msg := range c.hub.store.PopPending(d.UserID) {
 		event := "message"
 		if msg.GroupID != "" {
@@ -232,6 +243,46 @@ func (c *Client) register(env protocol.Envelope) {
 		}
 		c.emit(protocol.Outbound{Event: event, Data: msg})
 	}
+}
+
+// contactAdd, "beni kişi olarak ekle" bildirimini hedef kullanıcıya iletir.
+// Karşı taraf çevrimiçiyse anında, değilse register'da teslim edilmek üzere kuyruğa alınır.
+// Gönderenin kimliği yalnızca sunucudaki bağlantı kimliğinden alınır (sahtecilik önlenir).
+func (c *Client) contactAdd(env protocol.Envelope) {
+	d, err := protocol.Unmarshal[protocol.ContactAdd](env.Data)
+	if err != nil || d.To == "" {
+		c.emit(protocol.Outbound{Event: "error", RequestID: env.RequestID, Error: "invalid contact:add payload"})
+		return
+	}
+	from := c.userID
+	if from == "" {
+		from = d.From
+	}
+	if from == "" || from == d.To {
+		return
+	}
+	// Gönderenin açık anahtarı — alıcı hemen şifreli yanıt verebilsin diye.
+	pk := d.PublicKey
+	if pk == "" {
+		pk, _ = c.hub.store.GetPublicKey(from)
+	}
+	payload := map[string]any{
+		"from":        from,
+		"publicKey":   pk,
+		"nostrPubkey": d.NostrPubkey,
+		"displayName": d.DisplayName,
+		"timestamp":   protocol.NowMillis(),
+	}
+	if !c.to(d.To, "contact:add", payload) {
+		c.hub.store.AddPendingContact(d.To, storage.PendingContact{
+			From:        from,
+			PublicKey:   pk,
+			NostrPubkey: d.NostrPubkey,
+			DisplayName: d.DisplayName,
+			Timestamp:   protocol.NowMillis(),
+		})
+	}
+	c.emit(protocol.Outbound{Event: "contact:add:ack", RequestID: env.RequestID, Data: map[string]any{"ok": true}})
 }
 
 func (c *Client) directMessage(env protocol.Envelope) {

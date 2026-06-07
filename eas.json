@@ -18,6 +18,11 @@
     },
     "preview": {
       "distribution": "internal",
+      "env": {
+        "EXPO_PUBLIC_RELAY_TRANSPORT": "websocket",
+        "EXPO_PUBLIC_SERVER_URL": "https://relayworks.xyz",
+        "EXPO_PUBLIC_WS_URL": "wss://relayworks.xyz/ws"
+      },
       "android": {
         "buildType": "apk",
         "gradleCommand": ":app:assembleRelease"
@@ -29,6 +34,11 @@
     },
     "production": {
       "autoIncrement": true,
+      "env": {
+        "EXPO_PUBLIC_RELAY_TRANSPORT": "websocket",
+        "EXPO_PUBLIC_SERVER_URL": "https://relayworks.xyz",
+        "EXPO_PUBLIC_WS_URL": "wss://relayworks.xyz/ws"
+      },
       "android": {
         "buildType": "apk"
       },

@@ -94,3 +94,10 @@ src-tauri/binaries/*
 server-go/*.exe
 tor-bin/macos/tor
 tor-bin/macos/*.dylib
+
+# local build artifacts / large binaries (not for git)
+*.apk
+apk-work-jsbundle/
+*-fixed.zip
+.local-tools/
+.claude/

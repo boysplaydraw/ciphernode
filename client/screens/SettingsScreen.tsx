@@ -74,6 +74,8 @@ type NavigationProp = NativeStackNavigationProp<
 // Tüm privacy flags gerçek implementasyona sahip
 const COMING_SOON_FLAGS: readonly string[] = [] as const;
 
+const OFFICIAL_WEBSITE_URL = "https://cipher-node.site";
+
 interface SettingsRowProps {
   icon: string;
   title: string;
@@ -1809,11 +1811,11 @@ export default function SettingsScreen() {
                 }
                 subtitle={
                   currentLanguage === "tr"
-                    ? "cipher-node.site"
-                    : "cipher-node.site"
+                    ? OFFICIAL_WEBSITE_URL
+                    : OFFICIAL_WEBSITE_URL
                 }
                 onPress={() => {
-                  const siteUrl = "https://cipher-node.site";
+                  const siteUrl = OFFICIAL_WEBSITE_URL;
                   if (isElectron()) {
                     electronOpenExternal(siteUrl);
                   } else {

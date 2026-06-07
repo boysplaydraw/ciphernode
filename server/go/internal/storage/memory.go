@@ -6,21 +6,25 @@ import (
 )
 
 type Memory struct {
-	mu        sync.RWMutex
-	publicKey map[string]string
-	pending   map[string][]PendingMessage
-	groups    map[string]Group
-	files     map[string]SharedFile
-	opts      Options
+	mu              sync.RWMutex
+	publicKey       map[string]string
+	pending         map[string][]PendingMessage
+	contacts        map[string][]byte
+	pendingContacts map[string][]PendingContact
+	groups          map[string]Group
+	files           map[string]SharedFile
+	opts            Options
 }
 
 func NewMemory(opts Options) *Memory {
 	return &Memory{
-		publicKey: map[string]string{},
-		pending:   map[string][]PendingMessage{},
-		groups:    map[string]Group{},
-		files:     map[string]SharedFile{},
-		opts:      opts,
+		publicKey:       map[string]string{},
+		pending:         map[string][]PendingMessage{},
+		contacts:        map[string][]byte{},
+		pendingContacts: map[string][]PendingContact{},
+		groups:          map[string]Group{},
+		files:           map[string]SharedFile{},
+		opts:            opts,
 	}
 }
 
@@ -52,6 +56,46 @@ func (m *Memory) PopPending(userID string) []PendingMessage {
 	msgs := append([]PendingMessage(nil), m.pending[userID]...)
 	delete(m.pending, userID)
 	return msgs
+}
+
+func (m *Memory) SaveContacts(userID string, contacts []byte) {
+	if userID == "" || len(contacts) == 0 {
+		return
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.contacts[userID] = append([]byte(nil), contacts...)
+}
+
+func (m *Memory) GetContacts(userID string) ([]byte, bool) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	v, ok := m.contacts[userID]
+	return v, ok
+}
+
+func (m *Memory) AddPendingContact(userID string, contact PendingContact) {
+	if userID == "" {
+		return
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	// Aynı göndericiden tekrarlı bekleyen bildirimleri birleştir
+	for i, existing := range m.pendingContacts[userID] {
+		if existing.From == contact.From {
+			m.pendingContacts[userID][i] = contact
+			return
+		}
+	}
+	m.pendingContacts[userID] = append(m.pendingContacts[userID], contact)
+}
+
+func (m *Memory) PopPendingContacts(userID string) []PendingContact {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	out := append([]PendingContact(nil), m.pendingContacts[userID]...)
+	delete(m.pendingContacts, userID)
+	return out
 }
 
 func (m *Memory) SaveGroup(group Group) {
@@ -143,6 +187,19 @@ func (m *Memory) Cleanup(now time.Time) {
 			delete(m.pending, userID)
 		} else {
 			m.pending[userID] = kept
+		}
+	}
+	for userID, contacts := range m.pendingContacts {
+		kept := contacts[:0]
+		for _, ct := range contacts {
+			if time.Duration(nowMs-ct.Timestamp)*time.Millisecond < m.opts.MessageTTL {
+				kept = append(kept, ct)
+			}
+		}
+		if len(kept) == 0 {
+			delete(m.pendingContacts, userID)
+		} else {
+			m.pendingContacts[userID] = kept
 		}
 	}
 	for id, file := range m.files {

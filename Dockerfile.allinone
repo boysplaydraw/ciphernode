@@ -12,6 +12,8 @@ COPY app.json ./
 
 ENV NODE_ENV=production
 ENV CI=1
+# Go relay yalnızca ham WebSocket (/ws) konuşur — web istemcisi de ham WS kullanmalı.
+ENV EXPO_PUBLIC_RELAY_TRANSPORT=websocket
 
 RUN npx expo export --platform web --output-dir web_dist
 

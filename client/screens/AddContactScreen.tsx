@@ -30,7 +30,7 @@ import type { RootStackParamList } from "@/navigation/RootStackNavigator";
 import { useLanguage } from "@/constants/language";
 import { getApiUrl } from "@/lib/query-client";
 
-import { lookupUserPublicKey } from "@/lib/socket";
+import { lookupUserPublicKey, sendContactAdd } from "@/lib/socket";
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
@@ -212,6 +212,10 @@ export default function AddContactScreen() {
         addedAt: Date.now(),
         ...(nostrPubkey ? { nostrPubkey } : {}),
       });
+
+      // Karşı tarafa "seni ekledim" bildirimi gönder — o da bizi otomatik eklesin
+      // (çevrimiçiyse anında, değilse bağlanınca teslim edilir).
+      sendContactAdd(parsedId, identity?.publicKey, identity?.nostrPubkey);
 
       // Kişi listesini diğer cihazlarla senkronize et
       if (identity?.id) {

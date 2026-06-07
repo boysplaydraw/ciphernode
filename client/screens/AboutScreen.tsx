@@ -1,4 +1,5 @@
 import React, { useState, useCallback } from "react";
+import Constants from "expo-constants";
 import {
   View,
   ScrollView,
@@ -16,7 +17,10 @@ import { ThemedView } from "@/components/ThemedView";
 import { Colors, Spacing, BorderRadius } from "@/constants/theme";
 import { useLanguage } from "@/constants/language";
 
-const CURRENT_VERSION = "1.0.0";
+// app.json'daki "version" alanından oku — sabit bir dize ile build'den
+// kopması (ve "Check for Updates"in her zaman "güncel" göstermesi) önlenir.
+const CURRENT_VERSION = Constants.expoConfig?.version || "1.0.0";
+const OFFICIAL_WEBSITE_URL = "https://cipher-node.site";
 const GITHUB_RELEASES_API =
   "https://api.github.com/repos/boysplaydraw/ciphernode/releases/latest";
 const GITHUB_RELEASES_URL =
@@ -282,6 +286,11 @@ export default function AboutScreen() {
           <ThemedText style={styles.sectionTitle}>{t.links}</ThemedText>
           <View style={styles.linksCard}>
             <LinkRow
+              icon="globe"
+              title={language === "tr" ? "Web Sitesi" : "Website"}
+              url={OFFICIAL_WEBSITE_URL}
+            />
+            <LinkRow
               icon="github"
               title={t.sourceCode}
               url="https://github.com/boysplaydraw/ciphernode"
@@ -299,7 +308,7 @@ export default function AboutScreen() {
             <LinkRow
               icon="smartphone"
               title={t.termuxPackage}
-              url="https://github.com/boysplaydraw/ciphernode/blob/master/TERMUX.md"
+              url="https://github.com/boysplaydraw/ciphernode/blob/main/TERMUX.md"
             />
           </View>
         </View>
@@ -310,12 +319,12 @@ export default function AboutScreen() {
             <LinkRow
               icon="shield"
               title={t.privacyPolicy}
-              url="https://cipher-node.site/privacy"
+              url={`${OFFICIAL_WEBSITE_URL}/privacy`}
             />
             <LinkRow
               icon="file-text"
               title={t.termsOfService}
-              url="https://cipher-node.site/terms"
+              url={`${OFFICIAL_WEBSITE_URL}/terms`}
             />
             <LinkRow
               icon="award"

@@ -11,6 +11,7 @@ import { ThemedText } from "@/components/ThemedText";
 import { ThemedView } from "@/components/ThemedView";
 import { Colors, Spacing, BorderRadius } from "@/constants/theme";
 import { addContact, getContacts } from "@/lib/storage";
+import { sendContactAdd } from "@/lib/socket";
 import { useIdentity } from "@/hooks/useIdentity";
 import { useLanguage } from "@/constants/language";
 
@@ -166,6 +167,9 @@ export default function QRScannerScreen() {
         addedAt: Date.now(),
         ...(parsed.npk ? { nostrPubkey: parsed.npk } : {}),
       });
+
+      // Karşı tarafa "seni ekledim" bildirimi — o da bizi otomatik eklesin
+      sendContactAdd(parsed.id, identity?.publicKey, identity?.nostrPubkey);
 
       if (Platform.OS !== "web") {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);

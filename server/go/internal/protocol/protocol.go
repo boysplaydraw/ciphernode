@@ -44,6 +44,14 @@ type GroupMessage struct {
 	Content   string `json:"content,omitempty"`
 }
 
+type ContactAdd struct {
+	To          string `json:"to"`
+	From        string `json:"from"`
+	PublicKey   string `json:"publicKey,omitempty"`
+	NostrPubkey string `json:"nostrPubkey,omitempty"`
+	DisplayName string `json:"displayName,omitempty"`
+}
+
 type FileShare struct {
 	To           string `json:"to"`
 	From         string `json:"from"`

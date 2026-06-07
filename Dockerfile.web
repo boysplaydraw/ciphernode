@@ -25,6 +25,8 @@ COPY . .
 
 # EXPO_PUBLIC_SERVER_URL boş bırakılıyor:
 # getApiUrl() → window.location.origin kullanır → nginx proxy üzerinden otomatik çalışır
+# Go relay yalnızca ham WebSocket (/ws) konuşur — web istemcisi de ham WS kullanmalı.
+ENV EXPO_PUBLIC_RELAY_TRANSPORT=websocket
 RUN npx expo export --platform web --output-dir /app/web-dist 2>&1 | tail -5
 
 # ── Aşama 2: Nginx ile servis et ──────────────────────────────

@@ -40,6 +40,35 @@ func NewRouter(cfg config.Config, store storage.Store, fileSvc *files.Service, h
 		}
 		writeJSON(w, http.StatusOK, map[string]string{"publicKey": key})
 	})
+	mux.HandleFunc("/api/contacts/", func(w http.ResponseWriter, r *http.Request) {
+		userID := strings.Trim(strings.TrimPrefix(r.URL.Path, "/api/contacts/"), "/")
+		if userID == "" {
+			http.NotFound(w, r)
+			return
+		}
+		switch r.Method {
+		case http.MethodGet:
+			blob, ok := store.GetContacts(userID)
+			if !ok || len(blob) == 0 {
+				writeJSON(w, http.StatusOK, map[string]any{"contacts": []any{}})
+				return
+			}
+			writeJSON(w, http.StatusOK, map[string]json.RawMessage{"contacts": blob})
+		case http.MethodPost:
+			r.Body = http.MaxBytesReader(w, r.Body, 4*1024*1024)
+			var payload struct {
+				Contacts json.RawMessage `json:"contacts"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&payload); err != nil || len(payload.Contacts) == 0 {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid contacts payload"})
+				return
+			}
+			store.SaveContacts(userID, payload.Contacts)
+			writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+		default:
+			w.WriteHeader(http.StatusMethodNotAllowed)
+		}
+	})
 	mux.HandleFunc("/api/files/upload", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			w.WriteHeader(http.StatusMethodNotAllowed)
@@ -199,7 +228,17 @@ func allowedOrigin(origin string, requestHost string, allowlist []string) bool {
 	}
 
 	parsed, err := url.Parse(origin)
-	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") {
+	if err != nil {
+		return false
+	}
+
+	// Tauri masaüstü webview origin'i (tauri://localhost veya http(s)://tauri.localhost).
+	// Sidecar relay yalnızca 127.0.0.1'e bağlandığından bu origin'lere güvenmek güvenlidir.
+	if parsed.Scheme == "tauri" || parsed.Hostname() == "tauri.localhost" {
+		return true
+	}
+
+	if parsed.Scheme != "http" && parsed.Scheme != "https" {
 		return false
 	}
 

@@ -28,6 +28,7 @@ import {
   deleteContactAndChat,
   deleteGroup,
   pushContactsToServer,
+  onContactsChanged,
   type Chat,
   type Group,
 } from "@/lib/storage";
@@ -259,11 +260,13 @@ export default function ChatsListScreen() {
     }, [loadData]),
   );
 
-  // Yeni mesaj gelince listeyi anında güncelle (kayıtlı olmayan kişilerden gelenler dahil)
+  // Yeni mesaj gelince ya da kişi listesi değişince listeyi anında güncelle
+  // (kayıtlı olmayan kişilerden gelenler ve karşı taraftan otomatik eklemeler dahil)
   useEffect(() => {
     const unsubMsg = onMessage(() => { loadData(); });
     const unsubGroup = onGroupMessage(() => { loadData(); });
-    return () => { unsubMsg(); unsubGroup(); };
+    const unsubContacts = onContactsChanged(() => { loadData(); });
+    return () => { unsubMsg(); unsubGroup(); unsubContacts(); };
   }, [loadData]);
 
   const onRefresh = useCallback(async () => {

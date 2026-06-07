@@ -1,0 +1,76 @@
+# EAS Build arşiv hariç tutma listesi.
+# ÖNEMLİ: .easignore varsa EAS, .gitignore YERİNE bunu kullanır. Bu yüzden bu dosya
+# .gitignore'un bir üst kümesidir: gizli dosya desenleri + Android build'i için
+# gereksiz, devasa artefaktlar (aksi halde proje arşivi 2 GB sınırını aşar).
+# Not: node_modules ve .git zaten EAS tarafından otomatik dışlanır.
+
+# ── Gizli dosyalar / kimlik bilgileri (EAS sunucusuna ASLA yüklenmemeli) ──
+.env
+.env*.local
+*.jks
+*.p8
+*.p12
+*.key
+*.pem
+*.mobileprovision
+.claude/settings.local.json
+
+# ── Bağımlılıklar / Expo ──
+node_modules/
+.expo/
+expo-env.d.ts
+
+# ── Web / Electron / server build çıktıları ──
+dist/
+web-build/
+hostinger-web/
+static-build/
+dist-electron/
+electron/dist/
+build/
+server_dist/
+
+# ── Rust / Tauri masaüstü (Android'e gerekmez; target/ dizinleri çok büyük) ──
+src-tauri/
+apps/desktop/
+target/
+**/target/
+
+# ── Sunucu ve dağıtım klasörleri (mobil build'e gerekmez) ──
+electron/
+server/
+server-go/
+website/
+web/
+casaos/
+unraid/
+infra/
+nginx/
+tor-bin/
+termux-package*/
+
+# ── Yerel native build çıktıları (EAS bunları yeniden üretir) ──
+android/build/
+android/app/build/
+android/.gradle/
+android/.cxx/
+ios/build/
+.kotlin/
+
+# ── Go test/build cache ──
+.gocache/
+**/.gocache/
+*.test
+*.go.[0-9]*
+
+# ── Diğer büyük/gereksiz dosyalar ──
+src-
+*.exe
+attached_assets/
+.local-tools/
+.cache/
+.replit
+replit.md
+*.tsbuildinfo
+*.orig.*
+.DS_Store

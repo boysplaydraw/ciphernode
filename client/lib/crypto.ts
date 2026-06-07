@@ -9,7 +9,11 @@ import {
   getPublicKey as nostrGetPublicKey,
 } from "nostr-tools";
 
-const IDENTITY_STORAGE_KEY = "@ciphernode/identity";
+// SecureStore (native) anahtarları yalnızca [A-Za-z0-9._-] içerebilir; "@" ve "/" geçersizdir.
+// Web localStorage kullandığından eski anahtar orada sorunsuz — mevcut web kimliklerini
+// korumak için web'de eski anahtarı tutuyoruz, native'de geçerli bir anahtara geçiyoruz.
+const IDENTITY_STORAGE_KEY =
+  Platform.OS === "web" ? "@ciphernode/identity" : "ciphernode_identity";
 const IDENTITY_BACKUP_SALT_BYTES = 16;
 const IDENTITY_BACKUP_IV_BYTES = 12;
 const IDENTITY_BACKUP_TAG_BYTES = 16;

@@ -1,7 +1,9 @@
 import { io } from "socket.io-client";
+import * as ExpoCrypto from "expo-crypto";
 import { getApiUrl } from "./query-client";
 import { getTorSettings, getActiveGroups, type TorSettings } from "./storage";
 import { stegEncode, stegDecode } from "./steganography";
+import { isTauri } from "./tauri-bridge";
 
 interface SocketLike {
   connected: boolean;
@@ -133,7 +135,7 @@ function cryptoRandom(): string {
   if (globalThis.crypto?.randomUUID) {
     return globalThis.crypto.randomUUID();
   }
-  return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  return ExpoCrypto.randomUUID();
 }
 
 let socket: SocketLike | null = null;
@@ -372,6 +374,16 @@ export interface IncomingFileNotification {
 type MatchingCallback = (event: MatchingEvent) => void;
 type UserOnlineCallback = (data: { userId: string; publicKey: string }) => void;
 
+/** Karşı taraf bizi kişi olarak eklediğinde gelen bildirim */
+export interface IncomingContactAdd {
+  from: string;
+  publicKey?: string;
+  nostrPubkey?: string;
+  displayName?: string;
+  timestamp?: number;
+}
+type ContactAddCallback = (data: IncomingContactAdd) => void;
+
 type FileShareCallback = (notification: IncomingFileNotification) => void;
 type WebRTCSignalCallback = (event: string, data: unknown) => void;
 
@@ -391,6 +403,7 @@ const statusListeners: StatusCallback[] = [];
 const torStatusListeners: TorStatusCallback[] = [];
 const matchingListeners: MatchingCallback[] = [];
 const userOnlineListeners: UserOnlineCallback[] = [];
+const contactAddListeners: ContactAddCallback[] = [];
 const fileShareListeners: FileShareCallback[] = [];
 const webrtcSignalListeners: WebRTCSignalCallback[] = [];
 const p2pFileOfferListeners: P2PFileOfferCallback[] = [];
@@ -433,8 +446,14 @@ export async function initSocket(
   // Tor aktifken bağlantı sorunu olasılığı yüksek — daha kısa timeout
   const connectionTimeout = torEnabled ? 20000 : 10000;
 
+  // Go relay yalnızca ham WebSocket (/ws) konuşur. Tauri masaüstü Go sidecar'ı
+  // paketlediği için orada her zaman ham WebSocket transport kullanılmalı —
+  // build zamanı env'ine bakılmaksızın çalışsın diye runtime'da da tespit edilir.
+  const useWebSocketRelay =
+    process.env.EXPO_PUBLIC_RELAY_TRANSPORT === "websocket" || isTauri();
+
   const activeSocket: SocketLike =
-    process.env.EXPO_PUBLIC_RELAY_TRANSPORT === "websocket"
+    useWebSocketRelay
       ? new GoWebSocketRelay(url)
       : io(url, {
           transports: ["websocket", "polling"],
@@ -591,6 +610,12 @@ export async function initSocket(
   // Bir kullanıcı çevrimiçi olduğunda public key güncellemesi
   activeSocket.on("user:online", (d: { userId: string; publicKey: string }) => {
     userOnlineListeners.forEach((cb) => cb(d));
+  });
+
+  // Karşı taraf bizi kişi olarak ekledi — otomatik karşılıklı ekleme bildirimi
+  activeSocket.on("contact:add", (d: IncomingContactAdd) => {
+    if (!d?.from) return;
+    contactAddListeners.forEach((cb) => cb(d));
   });
 
   // Dosya paylaşım bildirimi (server "file:incoming" olarak emit ediyor)
@@ -943,6 +968,37 @@ export function sendWebRTCSignal(event: string, data: unknown): void {
   if (socket?.connected) {
     socket.emit(event, { ...(data as object), from: currentUserId });
   }
+}
+
+/**
+ * Karşı tarafa "seni kişi olarak ekledim" bildirimi gönder.
+ * Sunucu hedef çevrimiçiyse anında iletir, değilse bağlanınca teslim eder.
+ * Böylece eklenen kişi otomatik olarak bizi de listesinde görür.
+ */
+export function sendContactAdd(
+  to: string,
+  publicKey?: string,
+  nostrPubkey?: string,
+  displayName?: string,
+): void {
+  if (socket?.connected && currentUserId) {
+    socket.emit("contact:add", {
+      to,
+      from: currentUserId,
+      publicKey: publicKey ?? currentPublicKey,
+      nostrPubkey,
+      displayName,
+    });
+  }
+}
+
+/** Karşı taraf bizi kişi olarak eklediğinde tetiklenir */
+export function onContactAdd(callback: ContactAddCallback): () => void {
+  contactAddListeners.push(callback);
+  return () => {
+    const index = contactAddListeners.indexOf(callback);
+    if (index > -1) contactAddListeners.splice(index, 1);
+  };
 }
 
 /** Bir kullanıcı çevrimiçi olduğunda (public key güncellemesi için) */

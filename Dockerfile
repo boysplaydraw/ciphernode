@@ -9,6 +9,9 @@ COPY . .
 
 ENV NODE_ENV=production
 ENV CI=1
+# Go relay yalnızca ham WebSocket (/ws) konuşur. Paketlenen web istemcisi de ham WS
+# transport kullanmalı; aksi halde socket.io ile bağlanamaz ve durum "Offline" kalır.
+ENV EXPO_PUBLIC_RELAY_TRANSPORT=websocket
 
 RUN npx expo export --platform web --output-dir dist
 

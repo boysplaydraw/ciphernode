@@ -19,8 +19,13 @@ import {
   deleteContactAndChat,
   getContact,
   pushContactsToServer,
+  updateContact,
 } from "@/lib/storage";
-import { getIdentity, type Contact } from "@/lib/crypto";
+import {
+  getIdentity,
+  parsePublicKeyFingerprint,
+  type Contact,
+} from "@/lib/crypto";
 import { getApiUrl } from "@/lib/query-client";
 import type { ChatsStackParamList } from "@/navigation/ChatsStackNavigator";
 import { Platform } from "react-native";
@@ -40,6 +45,7 @@ export default function ContactInfoScreen() {
 
   const [contact, setContact] = useState<Contact | null>(null);
   const [showFullFingerprint, setShowFullFingerprint] = useState(false);
+  const [refreshingKey, setRefreshingKey] = useState(false);
 
   useFocusEffect(
     useCallback(() => {
@@ -77,6 +83,78 @@ export default function ContactInfoScreen() {
       ],
     );
   };
+
+  // Şifre çözme hataları genelde karşı tarafın güncel açık anahtarı ile
+  // bizde kayıtlı eski anahtarın eşleşmemesinden kaynaklanır. Sunucudan
+  // güncel anahtarı çekip, kullanıcı parmak izini onayladıktan sonra günceller.
+  const handleRefreshKey = useCallback(async () => {
+    if (!contact) return;
+    setRefreshingKey(true);
+    try {
+      const apiUrl = getApiUrl();
+      const res = await fetch(
+        `${apiUrl}api/users/${encodeURIComponent(contact.id)}/publickey`,
+      );
+      if (!res.ok) {
+        Alert.alert(
+          "Anahtar bulunamadı",
+          "Karşı taraf şu anda sunucuda görünmüyor. Daha sonra tekrar deneyin.",
+        );
+        return;
+      }
+      const data = await res.json();
+      const fetchedKey: string | undefined = data?.publicKey;
+      if (!fetchedKey) {
+        Alert.alert(
+          "Anahtar bulunamadı",
+          "Sunucu bu kişi için bir açık anahtar döndürmedi.",
+        );
+        return;
+      }
+
+      const fetchedFingerprint = await parsePublicKeyFingerprint(fetchedKey);
+      if (fetchedFingerprint === contact.fingerprint) {
+        Alert.alert(
+          "Güncel",
+          "Kayıtlı açık anahtar zaten sunucudaki ile aynı.",
+        );
+        return;
+      }
+
+      Alert.alert(
+        "Anahtar Değişikliği Bulundu",
+        "Bu kişi için sunucudaki açık anahtar, sende kayıtlı olandan farklı. " +
+          "Bu, şifre çözme hatalarına neden olabilir.\n\n" +
+          `Yeni parmak izi:\n${formatFingerprint(fetchedFingerprint)}\n\n` +
+          "Karşı tarafla parmak izini doğruladıktan sonra güncellemeni öneririz.",
+        [
+          { text: "İptal", style: "cancel" },
+          {
+            text: "Güncelle",
+            onPress: async () => {
+              await updateContact(contact.id, {
+                publicKey: fetchedKey,
+                fingerprint: fetchedFingerprint,
+              });
+              const updated = await getContact(contactId);
+              setContact(updated);
+              Alert.alert(
+                "Güncellendi",
+                "Açık anahtar güncellendi. Yeni mesajların şifresi artık doğru çözülmeli.",
+              );
+            },
+          },
+        ],
+      );
+    } catch {
+      Alert.alert(
+        "Hata",
+        "Anahtar kontrol edilemedi. İnternet bağlantını kontrol et.",
+      );
+    } finally {
+      setRefreshingKey(false);
+    }
+  }, [contact, contactId]);
 
   const formatFingerprint = (fp: string) => {
     return fp.replace(/(.{4})/g, "$1 ").trim();
@@ -172,6 +250,28 @@ export default function ContactInfoScreen() {
                 : "Public key is not available for this local contact record"}
             </ThemedText>
           </View>
+          {contact?.publicKey && (
+            <Pressable
+              onPress={handleRefreshKey}
+              disabled={refreshingKey}
+              style={({ pressed }) => [
+                styles.refreshKeyBtn,
+                pressed && { opacity: 0.7 },
+                refreshingKey && { opacity: 0.5 },
+              ]}
+            >
+              <Feather
+                name={refreshingKey ? "loader" : "refresh-cw"}
+                size={14}
+                color={Colors.dark.primary}
+              />
+              <ThemedText style={styles.refreshKeyText}>
+                {refreshingKey
+                  ? "Kontrol ediliyor..."
+                  : "Mesajların şifresi çözülmüyorsa anahtarı kontrol et"}
+              </ThemedText>
+            </Pressable>
+          )}
         </View>
 
         <View style={styles.section}>
@@ -282,6 +382,18 @@ const styles = StyleSheet.create({
   encryptionDetails: {
     fontSize: 13,
     color: Colors.dark.textSecondary,
+  },
+  refreshKeyBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Spacing.sm,
+    marginTop: Spacing.md,
+    paddingVertical: Spacing.sm,
+  },
+  refreshKeyText: {
+    flex: 1,
+    fontSize: 12,
+    color: Colors.dark.primary,
   },
   addedDate: {
     fontSize: 16,

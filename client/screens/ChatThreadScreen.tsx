@@ -9,6 +9,8 @@ import {
   KeyboardAvoidingView,
   Alert,
   Linking,
+  Image,
+  Modal,
 } from "react-native";
 import * as DocumentPicker from "expo-document-picker";
 import {
@@ -111,6 +113,10 @@ interface MessageBubbleProps {
   onLongPress: (message: Message, displayContent: string) => void;
 }
 
+function isImageMime(mimeType?: string | null): boolean {
+  return !!mimeType && mimeType.startsWith("image/");
+}
+
 function formatRemainingTime(expiresAt: number, now: number): string {
   const remaining = expiresAt - now;
   if (remaining <= 0) return "";
@@ -201,6 +207,12 @@ function MessageBubble({
       >
         {displayContent}
       </ThemedText>
+      {!isMine && displayContent === "[Decryption Failed]" && (
+        <ThemedText style={styles.decryptHint}>
+          Bu mesajın şifresi çözülemedi — kişi bilgisinden açık anahtarı
+          kontrol edin.
+        </ThemedText>
+      )}
       <View style={styles.messageFooter}>
         {message.expiresAt ? (
           <View style={styles.timerContainer}>
@@ -300,6 +312,14 @@ export default function ChatThreadScreen() {
     displayContent: string;
   } | null>(null);
   const [sendingFile, setSendingFile] = useState(false);
+  // Gönderilmeden önce kullanıcıya gösterilen dosya/medya önizlemesi
+  const [pendingFile, setPendingFile] = useState<{
+    uri: string;
+    name: string;
+    size: number;
+    mimeType: string;
+    webFile: File | null;
+  } | null>(null);
   const [incomingFiles, setIncomingFiles] = useState<
     ExtendedFileNotification[]
   >([]);
@@ -595,7 +615,8 @@ export default function ChatThreadScreen() {
 
   // Dosya gönder — akıllı yönlendirme
   // ≤ 100 MB → relay sunucu | > 100 MB → P2P WebRTC chunk | > limit → hata
-  const handleSendFile = useCallback(async () => {
+  // Dosya/medya seç ve göndermeden önce önizleme olarak göster
+  const handlePickFile = useCallback(async () => {
     if (!contact?.publicKey) {
       Alert.alert("Hata", "Bu kişinin açık anahtarı yok. Dosya şifrelenemez.", [
         { text: "Tamam" },
@@ -631,9 +652,38 @@ export default function ChatThreadScreen() {
         asset = result.assets[0];
       }
 
-      const fileSize = asset.size || 0;
-      const mimeType = asset.mimeType || "application/octet-stream";
+      setPendingFile({
+        uri: asset.uri,
+        name: asset.name,
+        size: asset.size || 0,
+        mimeType: asset.mimeType || "application/octet-stream",
+        webFile,
+      });
+    } catch (err) {
+      Alert.alert(
+        "Hata",
+        err instanceof Error ? err.message : "Dosya seçilemedi",
+      );
+    }
+  }, [contact, pickWebFile]);
 
+  const cancelPendingFile = useCallback(() => {
+    if (pendingFile && Platform.OS === "web") {
+      URL.revokeObjectURL(pendingFile.uri);
+    }
+    setPendingFile(null);
+  }, [pendingFile]);
+
+  // Önizlemede onaylanan dosyayı şifrele ve gönder
+  const handleSendFile = useCallback(async () => {
+    if (!contact?.publicKey || !pendingFile) return;
+
+    const asset = pendingFile;
+    const webFile = pendingFile.webFile;
+    const fileSize = asset.size;
+    const mimeType = asset.mimeType;
+
+    try {
       setSendingFile(true);
 
       const method = getTransferMethod(fileSize, isRelayConnected());
@@ -704,6 +754,7 @@ export default function ChatThreadScreen() {
         if (Platform.OS === "web") {
           URL.revokeObjectURL(asset.uri);
         }
+        setPendingFile(null);
         return;
       }
 
@@ -757,6 +808,7 @@ export default function ChatThreadScreen() {
       if (Platform.OS === "web") {
         URL.revokeObjectURL(asset.uri);
       }
+      setPendingFile(null);
     } catch (err) {
       Alert.alert(
         "Hata",
@@ -769,7 +821,7 @@ export default function ChatThreadScreen() {
     contact,
     identity,
     contactId,
-    pickWebFile,
+    pendingFile,
     onP2PTransferSignal,
     sendP2PTransferSignal,
   ]);
@@ -1205,9 +1257,92 @@ export default function ChatThreadScreen() {
           </View>
         ) : null}
 
+        <Modal
+          visible={!!pendingFile}
+          transparent
+          animationType="fade"
+          onRequestClose={cancelPendingFile}
+        >
+          <View style={styles.previewOverlay}>
+            <View style={styles.previewCard}>
+              <ThemedText style={styles.previewTitle}>
+                {isImageMime(pendingFile?.mimeType)
+                  ? "Medyayı gönder"
+                  : "Dosyayı gönder"}
+              </ThemedText>
+
+              {pendingFile && isImageMime(pendingFile.mimeType) ? (
+                <Image
+                  source={{ uri: pendingFile.uri }}
+                  style={styles.previewImage}
+                  resizeMode="contain"
+                />
+              ) : (
+                <View style={styles.previewFileRow}>
+                  <Feather
+                    name="file"
+                    size={28}
+                    color={Colors.dark.primary}
+                  />
+                  <View style={{ flex: 1 }}>
+                    <ThemedText
+                      style={styles.previewFileName}
+                      numberOfLines={1}
+                    >
+                      {pendingFile?.name}
+                    </ThemedText>
+                    <ThemedText style={styles.previewFileSize}>
+                      {formatFileSize(pendingFile?.size || 0)}
+                    </ThemedText>
+                  </View>
+                </View>
+              )}
+
+              {pendingFile && isImageMime(pendingFile.mimeType) && (
+                <ThemedText style={styles.previewFileName} numberOfLines={1}>
+                  {pendingFile.name} · {formatFileSize(pendingFile.size)}
+                </ThemedText>
+              )}
+
+              <View style={styles.previewBtnRow}>
+                <Pressable
+                  onPress={cancelPendingFile}
+                  disabled={sendingFile}
+                  style={({ pressed }) => [
+                    styles.previewCancelBtn,
+                    pressed && { opacity: 0.7 },
+                  ]}
+                >
+                  <ThemedText style={styles.previewCancelText}>
+                    İptal
+                  </ThemedText>
+                </Pressable>
+                <Pressable
+                  onPress={handleSendFile}
+                  disabled={sendingFile}
+                  style={({ pressed }) => [
+                    styles.previewSendBtn,
+                    pressed && { opacity: 0.85 },
+                    sendingFile && { opacity: 0.6 },
+                  ]}
+                >
+                  <Feather
+                    name={sendingFile ? "loader" : "send"}
+                    size={16}
+                    color={Colors.dark.buttonText}
+                  />
+                  <ThemedText style={styles.previewSendText}>
+                    {sendingFile ? "Gönderiliyor..." : "Gönder"}
+                  </ThemedText>
+                </Pressable>
+              </View>
+            </View>
+          </View>
+        </Modal>
+
         <View style={[styles.inputContainer, { paddingBottom: bottomPadding }]}>
           <Pressable
-            onPress={handleSendFile}
+            onPress={handlePickFile}
             disabled={sendingFile || !canEncryptToContact}
             style={({ pressed }) => [
               styles.attachButton,
@@ -1326,6 +1461,12 @@ const styles = StyleSheet.create({
   messageTextTheirs: {
     color: Colors.dark.text,
   },
+  decryptHint: {
+    fontSize: 11,
+    lineHeight: 15,
+    color: Colors.dark.warning,
+    marginTop: 4,
+  },
   messageFooter: {
     flexDirection: "row",
     alignItems: "center",
@@ -1440,6 +1581,81 @@ const styles = StyleSheet.create({
     fontSize: 12,
     lineHeight: 16,
     color: Colors.dark.textSecondary,
+  },
+  previewOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.7)",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: Spacing.xl,
+  },
+  previewCard: {
+    width: "100%",
+    maxWidth: 420,
+    backgroundColor: Colors.dark.backgroundDefault,
+    borderRadius: BorderRadius.md,
+    padding: Spacing.lg,
+    gap: Spacing.md,
+  },
+  previewTitle: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: Colors.dark.text,
+  },
+  previewImage: {
+    width: "100%",
+    height: 260,
+    borderRadius: BorderRadius.sm,
+    backgroundColor: Colors.dark.backgroundSecondary,
+  },
+  previewFileRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Spacing.md,
+    backgroundColor: Colors.dark.backgroundSecondary,
+    borderRadius: BorderRadius.sm,
+    padding: Spacing.lg,
+  },
+  previewFileName: {
+    fontSize: 14,
+    color: Colors.dark.text,
+  },
+  previewFileSize: {
+    fontSize: 12,
+    color: Colors.dark.textSecondary,
+    marginTop: 2,
+  },
+  previewBtnRow: {
+    flexDirection: "row",
+    gap: Spacing.md,
+  },
+  previewCancelBtn: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: Spacing.md,
+    borderRadius: BorderRadius.sm,
+    backgroundColor: Colors.dark.backgroundSecondary,
+  },
+  previewCancelText: {
+    fontSize: 14,
+    fontWeight: "500",
+    color: Colors.dark.textSecondary,
+  },
+  previewSendBtn: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: Spacing.sm,
+    paddingVertical: Spacing.md,
+    borderRadius: BorderRadius.sm,
+    backgroundColor: Colors.dark.primary,
+  },
+  previewSendText: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: Colors.dark.buttonText,
   },
   attachButton: {
     width: 44,

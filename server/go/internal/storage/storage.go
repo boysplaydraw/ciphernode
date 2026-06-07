@@ -29,6 +29,16 @@ type Group struct {
 	Members []string `json:"members"`
 }
 
+// PendingContact, çevrimdışı bir kullanıcıya iletilecek "beni kişi olarak ekledi"
+// bildirimidir. Kullanıcı bağlanınca register sırasında teslim edilir.
+type PendingContact struct {
+	From        string `json:"from"`
+	PublicKey   string `json:"publicKey,omitempty"`
+	NostrPubkey string `json:"nostrPubkey,omitempty"`
+	DisplayName string `json:"displayName,omitempty"`
+	Timestamp   int64  `json:"timestamp"`
+}
+
 type Stats struct {
 	ConnectedUsers  int `json:"connectedUsers"`
 	PendingMessages int `json:"pendingMessages"`
@@ -46,6 +56,10 @@ type Store interface {
 	GetPublicKey(userID string) (string, bool)
 	AddPending(userID string, msg PendingMessage)
 	PopPending(userID string) []PendingMessage
+	SaveContacts(userID string, contacts []byte)
+	GetContacts(userID string) ([]byte, bool)
+	AddPendingContact(userID string, contact PendingContact)
+	PopPendingContacts(userID string) []PendingContact
 	SaveGroup(group Group)
 	GetGroup(groupID string) (Group, bool)
 	AddGroupMember(groupID, userID string)
